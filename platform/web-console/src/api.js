@@ -119,6 +119,26 @@ class ApiClient {
 
   // Platform Admin
   getAdminOverview() { return this.request('/api/v1/tenants/admin/overview') }
+
+  // Allowed Emails
+  getAllowedEmails(tenant) { return this.request(`/api/v1/tenants/${tenant}/allowed-emails`) }
+  addAllowedEmail(tenant, email, role = 'member') {
+    return this.request(`/api/v1/tenants/${tenant}/allowed-emails`, {
+      method: 'POST',
+      body: JSON.stringify({ email, role }),
+    })
+  }
+  removeAllowedEmail(tenant, emailId) {
+    return this.request(`/api/v1/tenants/${tenant}/allowed-emails/${emailId}`, { method: 'DELETE' })
+  }
+
+  // Members
+  getMembers(tenant) { return this.request(`/api/v1/tenants/${tenant}/members`) }
+
+  // Tenant management
+  deleteTenant(tenant) {
+    return this.request(`/api/v1/tenants/${tenant}`, { method: 'DELETE' })
+  }
 }
 
 export const api = new ApiClient()

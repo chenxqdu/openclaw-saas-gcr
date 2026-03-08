@@ -102,7 +102,7 @@ function SignupPage({ onLogin }) {
     <div className="auth-page">
       <div className="auth-box">
         <h1>🦐 Create Account</h1>
-        <p>Start deploying AI agents</p>
+        <p>Your email must be pre-approved by a platform admin</p>
         <div className="card">
           {error && <div className="alert alert-error">{error}</div>}
           <form onSubmit={handleSubmit}>
@@ -154,6 +154,14 @@ function DashboardPage() {
       const t = await api.createTenant(newName.trim())
       setTenants([...tenants, t])
       setNewName('')
+    } catch (err) { setError(err.message) }
+  }
+
+  const deleteTenantFromList = async (name) => {
+    if (!confirm(`Delete tenant "${name}"? This will remove ALL agents, members, and namespace. This cannot be undone.`)) return
+    try {
+      await api.deleteTenant(name)
+      setTenants(tenants.filter(t => t.name !== name))
     } catch (err) { setError(err.message) }
   }
 
@@ -229,6 +237,7 @@ function DashboardPage() {
             </div>
             <div style={{display:'flex', gap:'8px', alignItems:'center'}}>
               <Link to={`/tenants/${t.name}/billing`} className="btn btn-sm">📊 Billing</Link>
+              {isAdmin && <button className="btn btn-sm btn-danger" onClick={() => deleteTenantFromList(t.name)}>🗑</button>}
               <span style={{color:'var(--text-secondary)', fontSize:'12px'}}>
                 Created: {new Date(t.created_at).toLocaleDateString()}
               </span>
@@ -243,6 +252,7 @@ function DashboardPage() {
 // ─── Tenant Detail Page ───
 function TenantPage() {
   const [agents, setAgents] = useState([])
+  const [members, setMembers] = useState([])
   const [newAgent, setNewAgent] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
@@ -256,13 +266,24 @@ function TenantPage() {
   const loadAgents = () => {
     api.listAgents(tenantName).then(setAgents).catch(e => setError(e.message)).finally(() => setLoading(false))
   }
-  useState(loadAgents, [])
+  const loadMembers = () => {
+    api.getMembers(tenantName).then(setMembers).catch(() => {})
+  }
+  useState(() => { loadAgents(); loadMembers() }, [])
 
   const deleteAgent = async (id) => {
     if (!confirm('Delete this agent? This will stop the pod.')) return
     try {
       await api.deleteAgent(tenantName, id)
       loadAgents()
+    } catch (err) { setError(err.message) }
+  }
+
+  const deleteTenant = async () => {
+    if (!confirm(`Delete tenant "${tenantName}"? This will remove ALL agents, members, and namespace. This cannot be undone.`)) return
+    try {
+      await api.deleteTenant(tenantName)
+      navigate('/')
     } catch (err) { setError(err.message) }
   }
 
@@ -274,6 +295,8 @@ function TenantPage() {
           <Link to="/">← Back to Dashboard</Link>
           {' · '}
           <Link to={`/tenants/${tenantName}/billing`}>📊 Billing & Usage</Link>
+          {' · '}
+          <button className="btn btn-sm btn-danger" onClick={deleteTenant} style={{verticalAlign:'middle'}}>🗑 Delete Tenant</button>
         </p>
       </div>
 
@@ -307,6 +330,31 @@ function TenantPage() {
         ))}
       </div>
 
+      {/* Allowed Emails */}
+      <AllowedEmailsCard tenantName={tenantName} />
+
+      {/* Members */}
+      <div className="card" style={{ marginTop: '16px' }}>
+        <div className="card-header">
+          <span className="card-title">Members</span>
+        </div>
+        {members.length === 0 ? (
+          <p style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '13px' }}>No members yet.</p>
+        ) : (
+          <div className="usage-table">
+            <div className="usage-row usage-header"><span>Email</span><span>Name</span><span>Role</span><span>Joined</span></div>
+            {members.map(m => (
+              <div key={m.user_id} className="usage-row">
+                <span>{m.email}</span>
+                <span>{m.display_name || '—'}</span>
+                <span className={`badge ${m.role === 'owner' ? 'badge-blue' : m.role === 'admin' ? 'badge-green' : ''}`}>{m.role}</span>
+                <span style={{fontSize:'12px', color:'var(--text-secondary)'}}>{new Date(m.joined_at).toLocaleDateString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {createModal && (
         <CreateAgentModal
           tenantName={tenantName}
@@ -332,6 +380,70 @@ function TenantPage() {
           agentName={logsModal.agentName}
           onClose={() => setLogsModal(null)}
         />
+      )}
+    </div>
+  )
+}
+
+// ─── Allowed Emails Card ───
+function AllowedEmailsCard({ tenantName }) {
+  const [emails, setEmails] = useState([])
+  const [newEmail, setNewEmail] = useState('')
+  const [newRole, setNewRole] = useState('member')
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const load = () => {
+    api.getAllowedEmails(tenantName).then(setEmails).catch(() => {}).finally(() => setLoading(false))
+  }
+  useState(load, [])
+
+  const addEmail = async (e) => {
+    e.preventDefault()
+    if (!newEmail) return
+    try {
+      await api.addAllowedEmail(tenantName, newEmail, newRole)
+      setNewEmail('')
+      load()
+    } catch (err) { setError(err.message) }
+  }
+
+  const removeEmail = async (id) => {
+    try {
+      await api.removeAllowedEmail(tenantName, id)
+      load()
+    } catch (err) { setError(err.message) }
+  }
+
+  return (
+    <div className="card" style={{ marginTop: '16px' }}>
+      <div className="card-header">
+        <span className="card-title">Allowed Signup Emails</span>
+      </div>
+      {error && <div className="alert alert-error">{error}</div>}
+      <form onSubmit={addEmail} style={{ display: 'flex', gap: '8px', padding: '12px 16px', borderBottom: '1px solid var(--border)' }}>
+        <input className="form-input" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="user@example.com" type="email" style={{ flex: 1 }} />
+        <select className="form-input" value={newRole} onChange={e => setNewRole(e.target.value)} style={{ width: '120px' }}>
+          <option value="member">Member</option>
+          <option value="admin">Admin</option>
+          <option value="viewer">Viewer</option>
+        </select>
+        <button className="btn btn-primary btn-sm" type="submit">Add</button>
+      </form>
+      {loading ? <p style={{ padding: '12px 16px' }}>Loading...</p> : emails.length === 0 ? (
+        <p style={{ padding: '12px 16px', color: 'var(--text-secondary)', fontSize: '13px' }}>No emails added. Add emails to allow users to sign up for this tenant.</p>
+      ) : (
+        <div className="usage-table">
+          <div className="usage-row usage-header"><span>Email</span><span>Role</span><span>Status</span><span></span></div>
+          {emails.map(e => (
+            <div key={e.id} className="usage-row">
+              <span>{e.email}</span>
+              <span className="badge">{e.role}</span>
+              <span>{e.used ? <span className="badge badge-green">Registered</span> : <span className="badge badge-orange">Pending</span>}</span>
+              <span>{!e.used && <button className="btn btn-sm btn-danger" onClick={() => removeEmail(e.id)}>Remove</button>}</span>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )
@@ -424,10 +536,6 @@ function CreateAgentModal({ tenantName, onClose, onSuccess, onError }) {
               ))}
             </div>
           )}
-
-          <p style={{fontSize:'13px', color:'var(--text-secondary)', marginBottom:'12px'}}>
-            🔑 Provide your LLM provider API keys. Bedrock is not available in China regions.
-          </p>
 
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>Cancel</button>
@@ -579,8 +687,8 @@ function BillingPage() {
   const [agentUsage, setAgentUsage] = useState({}) // { agentName: data }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [expandedAgent, setExpandedAgent] = useState(null)
   const [period, setPeriod] = useState(30)
+  const [expandedAgent, setExpandedAgent] = useState(null)
 
   useEffect(() => {
     setLoading(true)
@@ -592,16 +700,6 @@ function BillingPage() {
       setUsage(u)
     }).catch(e => setError(e.message)).finally(() => setLoading(false))
   }, [tenantName, period])
-
-  const loadAgentDetail = async (agentName) => {
-    if (expandedAgent === agentName) { setExpandedAgent(null); return }
-    setExpandedAgent(agentName)
-    if (agentUsage[agentName]) return
-    try {
-      const data = await api.getAgentUsage(tenantName, agentName, period * 24)
-      setAgentUsage(prev => ({ ...prev, [agentName]: data }))
-    } catch (e) { setError(e.message) }
-  }
 
   const fmtTokens = (n) => {
     if (!n) return '0'
@@ -725,26 +823,32 @@ function BillingPage() {
                 </div>
                 {usage.by_agent.map(a => (
                   <div key={a.agent_name}>
-                    <div className="usage-row" onClick={() => loadAgentDetail(a.agent_name)} style={{ cursor: 'pointer' }}>
+                    <div className="usage-row" onClick={() => setExpandedAgent(expandedAgent === a.agent_name ? null : a.agent_name)} style={{ cursor: 'pointer' }}>
                       <span className="agent-name-link">{a.agent_name}</span>
                       <span>{fmtTokens(a.total_tokens)}</span>
                       <span>{a.call_count}</span>
                       <span>{fmtCost(a.estimated_cost)}</span>
                       <span style={{ color: 'var(--text-secondary)' }}>{expandedAgent === a.agent_name ? '▼' : '▶'}</span>
                     </div>
-                    {expandedAgent === a.agent_name && agentUsage[a.agent_name] && (
-                      <div className="agent-detail">
-                        {agentUsage[a.agent_name].hourly?.length > 0 ? (
-                          <div className="mini-chart">
-                            {agentUsage[a.agent_name].hourly.slice(-48).map((h, i) => (
-                              <div key={i} className="mini-bar-wrapper" title={`${h.hour}: ${fmtTokens(h.total_tokens)} tokens`}>
-                                <div className="mini-bar"
-                                  style={{ height: Math.max(2, Math.min(40, (h.total_tokens / Math.max(...agentUsage[a.agent_name].hourly.map(x => x.total_tokens || 1))) * 40)) + 'px' }}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        ) : <p style={{ color: 'var(--text-secondary)', fontSize: '13px', padding: '8px' }}>No hourly data yet</p>}
+                    {expandedAgent === a.agent_name && (
+                      <div className="agent-detail" style={{ padding: '10px 16px', background: 'var(--bg-secondary)', borderRadius: '0 0 8px 8px', marginBottom: '4px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '13px' }}>
+                          <div><span style={{ color: 'var(--text-secondary)' }}>Input: </span><strong>{fmtTokens(a.input_tokens)}</strong></div>
+                          <div><span style={{ color: 'var(--text-secondary)' }}>Output: </span><strong>{fmtTokens(a.output_tokens)}</strong></div>
+                          <div><span style={{ color: 'var(--text-secondary)' }}>Total: </span><strong>{fmtTokens(a.total_tokens)}</strong></div>
+                          {(a.cache_read > 0 || a.cache_write > 0) && (
+                            <>
+                              <div><span style={{ color: 'var(--text-secondary)' }}>Cache Read: </span><strong>{fmtTokens(a.cache_read)}</strong></div>
+                              <div><span style={{ color: 'var(--text-secondary)' }}>Cache Write: </span><strong>{fmtTokens(a.cache_write)}</strong></div>
+                              <div></div>
+                            </>
+                          )}
+                          <div><span style={{ color: 'var(--text-secondary)' }}>API Calls: </span><strong>{a.call_count}</strong></div>
+                          <div><span style={{ color: 'var(--text-secondary)' }}>Est. Cost: </span><strong>{fmtCost(a.estimated_cost)}</strong></div>
+                          {a.call_count > 0 && (
+                            <div><span style={{ color: 'var(--text-secondary)' }}>Avg Tokens/Call: </span><strong>{Math.round(a.total_tokens / a.call_count)}</strong></div>
+                          )}
+                        </div>
                       </div>
                     )}
                   </div>

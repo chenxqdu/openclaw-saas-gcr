@@ -16,7 +16,7 @@
     "hosted_zone_name": "",
     "acm_cert_arn": "",
 
-    "db_instance_class": "db.t4g.micro",
+    "db_instance_class": "t4g.micro",
     "db_name": "openclawsaas",
     "db_allocated_storage": 20,
     "db_max_allocated_storage": 100,

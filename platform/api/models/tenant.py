@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Optional, List
 
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, UniqueConstraint
 
 from api.database import Base
 
@@ -56,11 +56,31 @@ class TenantMember(Base):
     )
 
 
+class TenantAllowedEmail(Base):
+    """Allowed emails for tenant signup — only these emails can register"""
+
+    __tablename__ = "tenant_allowed_emails"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    email = Column(String(255), nullable=False, index=True)
+    role = Column(String(50), default=TenantRole.MEMBER.value, nullable=False)
+    added_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    used = Column(Boolean, default=False, nullable=False)  # True after user signs up
+    used_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_tenant_allowed_email"),
+    )
+
+
 # Pydantic schemas
 class TenantCreate(BaseModel):
     """Tenant creation schema"""
 
     name: str = Field(..., min_length=3, max_length=63, pattern="^[a-z0-9-]+$")
+    allowed_emails: Optional[List[str]] = Field(default=None, description="Emails allowed to signup for this tenant")
 
 
 class TenantResponse(BaseModel):
@@ -101,3 +121,24 @@ class UpdateMemberRoleRequest(BaseModel):
     """Update member role"""
 
     role: str = Field(..., pattern="^(admin|member|viewer)$")
+
+
+class AllowedEmailRequest(BaseModel):
+    """Add an allowed email to a tenant"""
+
+    email: EmailStr
+    role: str = Field(default="member", pattern="^(admin|member|viewer)$")
+
+
+class AllowedEmailResponse(BaseModel):
+    """Allowed email info"""
+
+    id: int
+    email: str
+    role: str
+    used: bool
+    created_at: datetime
+    used_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True

@@ -46,3 +46,39 @@ async def init_db():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def seed_admin():
+    """Seed platform admin account from env vars if configured"""
+    from api.config import settings
+    from api.models.user import User
+
+    if not settings.ADMIN_EMAIL or not settings.ADMIN_PASSWORD:
+        return
+
+    import logging
+    logger = logging.getLogger(__name__)
+
+    async with AsyncSessionLocal() as db:
+        from sqlalchemy import select
+        result = await db.execute(select(User).where(User.email == settings.ADMIN_EMAIL))
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            # Ensure admin flag is set
+            if not existing.is_platform_admin:
+                existing.is_platform_admin = True
+                await db.commit()
+                logger.info(f"Promoted existing user {settings.ADMIN_EMAIL} to platform admin")
+        else:
+            # Create admin user
+            from api.services.auth_svc import hash_password
+            admin = User(
+                email=settings.ADMIN_EMAIL,
+                hashed_password=hash_password(settings.ADMIN_PASSWORD),
+                display_name="Platform Admin",
+                is_platform_admin=True,
+            )
+            db.add(admin)
+            await db.commit()
+            logger.info(f"Created platform admin: {settings.ADMIN_EMAIL}")

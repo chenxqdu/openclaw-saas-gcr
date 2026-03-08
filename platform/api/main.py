@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
-from api.database import init_db
+from api.database import init_db, seed_admin
 from api.routers import agents, auth, billing, channels, tenants, usage
 from api.services.k8s_client import k8s_client
 
@@ -15,6 +15,7 @@ from api.services.k8s_client import k8s_client
 async def lifespan(app: FastAPI):
     """Application lifespan manager"""
     await init_db()
+    await seed_admin()
     await k8s_client.initialize()
     yield
     await k8s_client.close()
