@@ -21,7 +21,7 @@ class S3Stack(cdk.Stack):
             bucket_name=f"{config.resource_prefix}-backups-{self.account}-{self.region}",
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            versioning=True,
+            versioned=True,
             removal_policy=cdk.RemovalPolicy.RETAIN,
             lifecycle_rules=[
                 s3.LifecycleRule(

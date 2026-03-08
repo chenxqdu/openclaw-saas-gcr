@@ -52,24 +52,22 @@ async def bind_channel(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    # Check if already bound
-    if channel_request.channel_type in agent.channels:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Channel {channel_request.channel_type} already bound",
-        )
+    # Check if already bound — allow re-bind (update)
+    is_update = channel_request.channel_type in agent.channels
 
     try:
         # Patch CRD to add channel config
         patch = build_crd_channel_patch(agent.name, channel_request.channel_type, channel_request.credentials)
         await k8s_client.patch_openclaw_instance(tenant_name, agent.name, patch)
 
-        # Update DB
-        agent.channels = agent.channels + [channel_request.channel_type]
+        # Update DB (only add if not already there)
+        if not is_update:
+            agent.channels = agent.channels + [channel_request.channel_type]
         await db.commit()
 
+        action = "updated" if is_update else "bound"
         return {
-            "status": "bound",
+            "status": action,
             "agent_id": agent.id,
             "agent_name": agent.name,
             "channel_type": channel_request.channel_type,
@@ -80,6 +78,49 @@ async def bind_channel(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to bind channel: {str(e)}",
+        )
+
+
+@router.put("/api/v1/tenants/{tenant_name}/agents/{agent_id}/channels/{channel_type}")
+async def update_channel(
+    tenant_name: str,
+    agent_id: int,
+    channel_type: str,
+    channel_request: ChannelBindRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update an existing channel binding (re-patches CRD with new credentials)"""
+    tenant, agent = await get_agent_or_404(tenant_name, agent_id, current_user, db)
+
+    if channel_type not in agent.channels:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Channel {channel_type} not bound to agent",
+        )
+
+    # Validate new credentials
+    try:
+        validate_channel_credentials(channel_type, channel_request.credentials)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    try:
+        # Patch CRD with updated channel config
+        patch = build_crd_channel_patch(agent.name, channel_type, channel_request.credentials)
+        await k8s_client.patch_openclaw_instance(tenant_name, agent.name, patch)
+
+        return {
+            "status": "updated",
+            "agent_id": agent.id,
+            "agent_name": agent.name,
+            "channel_type": channel_type,
+            "message": f"Channel {channel_type} updated. Pod will restart to pick up new config.",
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to update channel: {str(e)}",
         )
 
 
