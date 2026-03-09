@@ -74,7 +74,18 @@ LLM_PROVIDERS = {
             {"id": "us.meta.llama3-3-70b-instruct-v1:0", "name": "Llama 3.3 70B (Bedrock)"},
         ],
         "config_builder": lambda model: {
-            "models": {"providers": [{"id": "bedrock", "name": "bedrock"}]},
+            "models": {
+                "providers": {
+                    "amazon-bedrock": {
+                        "baseUrl": "https://bedrock-runtime.us-west-2.amazonaws.com",
+                        "auth": "aws-sdk",
+                        "api": "bedrock-converse-stream",
+                        "models": [
+                            {"id": model, "name": model, "input": ["text", "image"], "contextWindow": 200000, "maxTokens": 8192},
+                        ],
+                    }
+                }
+            }
         },
     },
     "openai-compatible": {

@@ -15,7 +15,6 @@ class PlanType(str, Enum):
     FREE = "free"
     PRO = "pro"
     ENTERPRISE = "enterprise"
-    UNLIMITED = "unlimited"
 
 
 class TenantRole(str, Enum):

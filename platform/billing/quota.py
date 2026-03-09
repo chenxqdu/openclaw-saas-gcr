@@ -14,7 +14,6 @@ PLAN_LIMITS = {
     "free": 100_000,  # 100K tokens
     "pro": 10_000_000,  # 10M tokens
     "enterprise": None,  # Unlimited
-    "unlimited": None,  # Unlimited
 }
 
 

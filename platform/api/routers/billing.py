@@ -22,35 +22,27 @@ router = APIRouter(tags=["billing"])
 PLAN_LIMITS = {
     "free": {
         "max_agents": 1,
-        "max_memory_per_agent": "2Gi",
-        "max_cpu_per_agent": "1",
+        "max_memory_per_agent": "4Gi",
+        "max_cpu_per_agent": "2 vCPU",
         "max_tokens_per_month": TOKEN_LIMITS.get("free"),
         "token_enforcement": False,
         "price_monthly": 0,
     },
     "pro": {
         "max_agents": 10,
-        "max_memory_per_agent": "8Gi",
-        "max_cpu_per_agent": "4",
+        "max_memory_per_agent": "4Gi",
+        "max_cpu_per_agent": "2 vCPU",
         "max_tokens_per_month": TOKEN_LIMITS.get("pro"),
         "token_enforcement": False,
         "price_monthly": 99,
     },
     "enterprise": {
         "max_agents": None,  # Unlimited
-        "max_memory_per_agent": "16Gi",
-        "max_cpu_per_agent": "8",
+        "max_memory_per_agent": "4Gi",
+        "max_cpu_per_agent": "2 vCPU",
         "max_tokens_per_month": None,
         "token_enforcement": False,
         "price_monthly": None,  # Custom pricing
-    },
-    "unlimited": {
-        "max_agents": None,
-        "max_memory_per_agent": "64Gi",
-        "max_cpu_per_agent": "32",
-        "max_tokens_per_month": None,
-        "token_enforcement": False,
-        "price_monthly": None,
     },
 }
 

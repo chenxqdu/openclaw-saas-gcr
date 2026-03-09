@@ -23,6 +23,7 @@ function Navbar({ auth }) {
           <>
             {api.isPlatformAdmin() && <span className="badge badge-purple" style={{fontSize:'11px'}}>Platform Admin</span>}
             <Link to="/">Dashboard</Link>
+            <Link to="/plans">Plans</Link>
             <button className="btn btn-sm" onClick={auth.logout}>Logout</button>
           </>
         )}
@@ -762,9 +763,12 @@ function BillingPage() {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Plan & Quota</span>
-            <span className={`badge ${billing.current_plan === 'free' ? 'badge-orange' : 'badge-green'}`}>
-              {billing.current_plan.toUpperCase()}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span className={`badge ${billing.current_plan === 'free' ? 'badge-orange' : 'badge-green'}`}>
+                {billing.current_plan.toUpperCase()}
+              </span>
+              <Link to="/plans" style={{ fontSize: 12 }}>Compare Plans →</Link>
+            </div>
           </div>
           <div className="billing-stats">
             <div className="stat-box">
@@ -941,6 +945,210 @@ function BillingPage() {
   )
 }
 
+// ─── Plans Page ───
+function PlansPage() {
+  const navigate = useNavigate()
+
+  const plans = [
+    {
+      name: 'Free',
+      key: 'free',
+      price: '$0',
+      priceSub: 'forever',
+      description: 'Perfect for trying out OpenClaw with a single agent.',
+      color: 'var(--text-secondary)',
+      badge: null,
+      limits: {
+        agents: '1',
+        tokensPerMonth: '100K',
+        tokenEnforcement: 'Count only (no hard limit)',
+        cpuPerAgent: '2 vCPU',
+        memoryPerAgent: '4 Gi',
+        totalCpu: '4 vCPU',
+        totalMemory: '8 Gi',
+        storage: '10 Gi per agent',
+        channels: 'All (Telegram, Discord, Feishu, WhatsApp)',
+        support: 'Community',
+      },
+    },
+    {
+      name: 'Pro',
+      key: 'pro',
+      price: '$99',
+      priceSub: '/month',
+      description: 'For teams running multiple agents with higher capacity.',
+      color: 'var(--accent-blue)',
+      badge: 'Most Popular',
+      limits: {
+        agents: '10',
+        tokensPerMonth: '10M',
+        tokenEnforcement: 'Count only (no hard limit)',
+        cpuPerAgent: '2 vCPU',
+        memoryPerAgent: '4 Gi',
+        totalCpu: '24 vCPU',
+        totalMemory: '48 Gi',
+        storage: '10 Gi per agent',
+        channels: 'All (Telegram, Discord, Feishu, WhatsApp)',
+        support: 'Email',
+      },
+    },
+    {
+      name: 'Enterprise',
+      key: 'enterprise',
+      price: 'Custom',
+      priceSub: 'contact us',
+      description: 'Dedicated resources and priority support for large deployments.',
+      color: 'var(--accent-purple)',
+      badge: null,
+      limits: {
+        agents: 'Unlimited',
+        tokensPerMonth: 'Unlimited',
+        tokenEnforcement: 'Count only (no hard limit)',
+        cpuPerAgent: '2 vCPU',
+        memoryPerAgent: '4 Gi',
+        totalCpu: '120 vCPU',
+        totalMemory: '240 Gi',
+        storage: '10 Gi per agent',
+        channels: 'All + Custom integrations',
+        support: 'Priority + Slack',
+      },
+    },
+  ]
+
+  const limitLabels = {
+    agents: '🤖 Max Agents',
+    tokensPerMonth: '🔤 Tokens / Month',
+    tokenEnforcement: '📊 Token Policy',
+    cpuPerAgent: '⚡ CPU / Agent',
+    memoryPerAgent: '💾 Memory / Agent',
+    totalCpu: '🖥️ Total CPU Quota',
+    totalMemory: '🗄️ Total Memory Quota',
+    storage: '💿 Storage',
+    channels: '📡 Channels',
+    support: '🛟 Support',
+  }
+
+  return (
+    <div className="container" style={{ maxWidth: 960 }}>
+      <div className="page-header" style={{ textAlign: 'center' }}>
+        <h1>Choose Your Plan</h1>
+        <p>All plans include full access to OpenClaw features. Scale up as you grow.</p>
+      </div>
+
+      {/* Plan Cards Grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3, 1fr)',
+        gap: '16px',
+        marginBottom: '32px',
+      }}>
+        {plans.map(plan => (
+          <div key={plan.key} className="card" style={{
+            borderColor: plan.badge ? plan.color : 'var(--border)',
+            position: 'relative',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            {plan.badge && (
+              <div style={{
+                position: 'absolute', top: '-12px', left: '50%', transform: 'translateX(-50%)',
+                background: plan.color, color: '#fff', padding: '2px 12px',
+                borderRadius: '10px', fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+              }}>{plan.badge}</div>
+            )}
+            <div style={{ textAlign: 'center', paddingTop: plan.badge ? 8 : 0 }}>
+              <div style={{ fontSize: '14px', fontWeight: 600, color: plan.color, textTransform: 'uppercase', letterSpacing: 1 }}>
+                {plan.name}
+              </div>
+              <div style={{ fontSize: '36px', fontWeight: 700, margin: '8px 0 0' }}>
+                {plan.price}
+              </div>
+              <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginBottom: 12 }}>
+                {plan.priceSub}
+              </div>
+              <p style={{ fontSize: '13px', color: 'var(--text-secondary)', minHeight: 40 }}>
+                {plan.description}
+              </p>
+            </div>
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, marginTop: 'auto' }}>
+              <div style={{ fontSize: '13px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Agents</span>
+                  <strong>{plan.limits.agents}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Tokens/mo</span>
+                  <strong>{plan.limits.tokensPerMonth}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>CPU/Agent</span>
+                  <strong>{plan.limits.cpuPerAgent}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Mem/Agent</span>
+                  <strong>{plan.limits.memoryPerAgent}</strong>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Support</span>
+                  <strong>{plan.limits.support}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Detailed Comparison Table */}
+      <div className="card">
+        <div className="card-header">
+          <span className="card-title">📋 Detailed Plan Comparison</span>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                <th style={{ textAlign: 'left', padding: '10px 12px', color: 'var(--text-secondary)', fontWeight: 600 }}>Feature</th>
+                {plans.map(p => (
+                  <th key={p.key} style={{ textAlign: 'center', padding: '10px 12px', color: p.color, fontWeight: 600 }}>
+                    {p.name}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {Object.entries(limitLabels).map(([key, label]) => (
+                <tr key={key} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 12px', color: 'var(--text-secondary)' }}>{label}</td>
+                  {plans.map(p => (
+                    <td key={p.key} style={{ textAlign: 'center', padding: '10px 12px', fontWeight: 500 }}>
+                      {p.limits[key]}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style={{ textAlign: 'center', marginTop: 16, color: 'var(--text-secondary)', fontSize: 13 }}>
+        <p>💡 Token counting is enabled on all plans but currently <strong>not enforced</strong> — you won't be cut off if you exceed the limit.</p>
+        <p style={{ marginTop: 4, fontSize: 12 }}>
+          Each agent runs as a dedicated pod with its own CPU, memory, and 10Gi persistent storage.
+          Total CPU/Memory quota is the cluster-wide limit for all your agents combined.
+        </p>
+        <p style={{ marginTop: 8 }}>
+          Need a custom plan? <a href="mailto:support@openclaw-saas.com">Contact us</a>
+        </p>
+      </div>
+
+      <div style={{ textAlign: 'center', marginTop: 20, marginBottom: 40 }}>
+        <button className="btn" onClick={() => navigate(-1)}>← Back</button>
+      </div>
+    </div>
+  )
+}
+
 // ─── App Router ───
 export default function App() {
   const auth = useAuth()
@@ -954,6 +1162,7 @@ export default function App() {
         <Route path="/" element={auth.isLoggedIn ? <DashboardPage /> : <Navigate to="/login" />} />
         <Route path="/tenants/:name" element={auth.isLoggedIn ? <TenantPage /> : <Navigate to="/login" />} />
         <Route path="/tenants/:name/billing" element={auth.isLoggedIn ? <BillingPage /> : <Navigate to="/login" />} />
+        <Route path="/plans" element={<PlansPage />} />
       </Routes>
     </div>
   )
