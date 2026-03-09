@@ -488,6 +488,7 @@ function CreateAgentModal({ tenantName, onClose, onSuccess, onError }) {
   const [provider, setProvider] = useState('openai-compatible')
   const [model, setModel] = useState('')
   const [apiKeys, setApiKeys] = useState({})
+  const [enableChromium, setEnableChromium] = useState(false)
   const [error, setError] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
@@ -515,6 +516,7 @@ function CreateAgentModal({ tenantName, onClose, onSuccess, onError }) {
         llmProvider: provider,
         llmModel: model || undefined,
         llmApiKeys: Object.keys(apiKeys).length ? apiKeys : undefined,
+        enableChromium,
       })
       onSuccess('Agent created! Pod is starting...')
     } catch (err) {
@@ -592,11 +594,18 @@ function CreateAgentModal({ tenantName, onClose, onSuccess, onError }) {
             </div>
           )}
 
-          {provider === 'bedrock-irsa' || false && (
+          {provider === 'bedrock-irsa' && (
             <p style={{fontSize:'13px', color:'var(--text-secondary)', marginBottom:'12px'}}>
               ✅ No API keys needed — uses platform-managed AWS Bedrock access.
             </p>
           )}
+
+          <div style={{background:'var(--bg-secondary)', padding:'12px', borderRadius:'8px', marginBottom:'12px'}}>
+            <label style={{display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', fontSize:'13px'}}>
+              <input type="checkbox" checked={enableChromium} onChange={e => setEnableChromium(e.target.checked)} />
+              <span>🌐 <strong>Enable Browser</strong> — adds Chromium sidecar for web automation (+500m CPU, +1Gi mem)</span>
+            </label>
+          </div>
 
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>Cancel</button>

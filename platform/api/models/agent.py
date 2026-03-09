@@ -91,9 +91,10 @@ class AgentCreate(BaseModel):
     """Agent creation schema"""
 
     name: str = Field(..., min_length=3, max_length=63, pattern="^[a-z0-9-]+$")
-    llm_provider: str = Field(default="openai-compatible", description="LLM provider: bedrock, openai, openai-compatible")
+    llm_provider: str = Field(default="openai-compatible", description="LLM provider: bedrock, openai, anthropic, bedrock-irsa")
     llm_model: Optional[str] = Field(default=None, description="Model ID (uses provider default if not specified)")
     llm_api_keys: Optional[Dict[str, str]] = Field(default=None, description="API keys for the LLM provider")
+    enable_chromium: bool = Field(default=False, description="Enable Chromium browser sidecar for web automation")
     config: Optional[Dict[str, Any]] = Field(default_factory=dict)
 
 

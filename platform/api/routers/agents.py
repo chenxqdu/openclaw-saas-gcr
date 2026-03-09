@@ -88,6 +88,7 @@ async def create_agent(
             llm_provider=agent_data.llm_provider,
             llm_model=model,
             llm_api_keys=agent_data.llm_api_keys,
+            enable_chromium=agent_data.enable_chromium,
         )
         agent.status = AgentStatus.RUNNING.value
         await db.commit()

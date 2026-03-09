@@ -204,15 +204,9 @@ class K8sClient:
         llm_model: Optional[str] = None,
         llm_api_keys: Optional[Dict[str, str]] = None,
         channel_config: Optional[Dict] = None,
+        enable_chromium: bool = False,
     ) -> dict:
-        """Create OpenClawInstance CRD + agent-keys secret.
-
-        LLM provider options:
-        
-        - bedrock: User provides AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
-        - openai: User provides OPENAI_API_KEY
-        - anthropic: User provides ANTHROPIC_API_KEY
-        """
+        """Create OpenClawInstance CRD + agent-keys secret."""
         from api.models.agent import LLM_PROVIDERS
 
         await self.initialize()
@@ -244,6 +238,7 @@ class K8sClient:
         #    - For bedrock: need explicit provider config
         model_prefix = {
             "bedrock": f"amazon-bedrock/{model}",
+            "bedrock-irsa": f"amazon-bedrock/{model}",
             "openai": model,
             "anthropic": model,
             "openai-compatible": f"custom/{model}",
@@ -306,6 +301,7 @@ class K8sClient:
                     "raw": raw_config,
                 },
                 "storage": {"persistence": {"enabled": True, "size": "10Gi"}},
+                "chromium": {"enabled": enable_chromium},
                 "resources": {
                     "requests": {"cpu": "250m", "memory": "1Gi"},
                     "limits": {"cpu": "1", "memory": "2Gi"},
