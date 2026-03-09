@@ -200,7 +200,7 @@ class K8sClient:
         self,
         tenant_name: str,
         agent_name: str,
-        llm_provider: str = "openai",
+        llm_provider: str = "bedrock-irsa",
         llm_model: Optional[str] = None,
         llm_api_keys: Optional[Dict[str, str]] = None,
         channel_config: Optional[Dict] = None,
@@ -208,7 +208,8 @@ class K8sClient:
         """Create OpenClawInstance CRD + agent-keys secret.
 
         LLM provider options:
-        - openai-compatible: User provides OPENAI_API_KEY + OPENAI_BASE_URL
+        - bedrock-irsa: Uses node IAM role (no API keys needed, platform-managed)
+        - bedrock: User provides AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY
         - openai: User provides OPENAI_API_KEY
         - anthropic: User provides ANTHROPIC_API_KEY
         """
@@ -238,11 +239,12 @@ class K8sClient:
 
         # 2) Build openclaw.json config
         #    - For providers with env var auth (openai, anthropic): just set model name
+        #    - For bedrock: need explicit provider config
         model_prefix = {
             "bedrock": f"amazon-bedrock/{model}",
+            "bedrock-irsa": f"amazon-bedrock/{model}",
             "openai": model,
             "anthropic": model,
-            "openai-compatible": model,
         }.get(llm_provider, model)
 
         raw_config = {
@@ -262,10 +264,8 @@ class K8sClient:
         if channel_config:
             raw_config["channels"] = channel_config
 
-        # 3) Build CRD body — use settings for region-aware URLs
-        sqs_queue_url = settings.SQS_QUEUE_URL
-        metrics_image = settings.metrics_exporter_image
-        aws_region = settings.AWS_REGION
+        # 3) Build CRD body
+        sqs_queue_url = settings.sqs_url
         body = {
             "apiVersion": f"{self.CRD_GROUP}/{self.CRD_VERSION}",
             "kind": "OpenClawInstance",
@@ -294,12 +294,12 @@ class K8sClient:
                 "sidecars": [
                     {
                         "name": "metrics-exporter",
-                        "image": metrics_image,
+                        "image": settings.metrics_exporter_image,
                         "env": [
                             {"name": "TENANT_NAME", "value": tenant_name},
                             {"name": "AGENT_NAME", "value": agent_name},
                             {"name": "SQS_QUEUE_URL", "value": sqs_queue_url},
-                            {"name": "AWS_DEFAULT_REGION", "value": aws_region},
+                            {"name": "AWS_DEFAULT_REGION", "value": settings.AWS_REGION},
                             {"name": "SCAN_INTERVAL_SECONDS", "value": "30"},
                             {"name": "METRICS_PORT", "value": "9090"},
                         ],
@@ -315,6 +315,15 @@ class K8sClient:
                                 "readOnly": True,
                             }
                         ],
+                        "securityContext": {
+                            "runAsNonRoot": True,
+                            "runAsUser": 1000,
+                            "runAsGroup": 1000,
+                            "allowPrivilegeEscalation": False,
+                            "readOnlyRootFilesystem": True,
+                            "capabilities": {"drop": ["ALL"]},
+                            "seccompProfile": {"type": "RuntimeDefault"},
+                        },
                     }
                 ],
             },
