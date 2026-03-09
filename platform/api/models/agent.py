@@ -45,6 +45,9 @@ LLM_PROVIDERS = {
             {"id": "global.anthropic.claude-sonnet-4-5-20250929-v1:0", "name": "Claude Sonnet 4.5"},
             {"id": "global.anthropic.claude-sonnet-4-20250514-v1:0", "name": "Claude Sonnet 4"},
             {"id": "global.anthropic.claude-opus-4-6-v1", "name": "Claude Opus 4"},
+            {"id": "deepseek.v3.2", "name": "DeepSeek V3.2"},
+            {"id": "minimax.minimax-m2.1", "name": "MiniMax M2.1"},
+            {"id": "moonshotai.kimi-k2.5", "name": "Kimi K2.5"},
         ],
         "config_builder": lambda model: {
             "models": {
