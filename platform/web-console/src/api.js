@@ -106,6 +106,7 @@ class ApiClient {
   }
 
   // Channels
+  getAvailableChannels() { return this.request('/api/v1/channels') }
   bindChannel(tenant, agentId, channelType, credentials) {
     return this.request(`/api/v1/tenants/${tenant}/agents/${agentId}/channels`, {
       method: 'POST', body: JSON.stringify({ channel_type: channelType, credentials })

@@ -1,6 +1,8 @@
 """Channel management service - builds CRD-compatible channel configs"""
 from typing import Dict, List
 
+from api.config import settings
+
 # Channel definitions: required credentials + how to build openclaw.json config
 CHANNEL_DEFINITIONS = {
     "telegram": {
@@ -61,14 +63,18 @@ CHANNEL_DEFINITIONS = {
 
 
 def get_supported_channels() -> List[str]:
-    """Get list of supported channel types"""
+    """Get list of supported channel types for this region"""
+    allowed = [ch.strip() for ch in settings.AVAILABLE_CHANNELS.split(",") if ch.strip()]
+    if allowed:
+        return [ch for ch in CHANNEL_DEFINITIONS if ch in allowed]
     return list(CHANNEL_DEFINITIONS.keys())
 
 
 def validate_channel_credentials(channel_type: str, credentials: Dict[str, str]) -> None:
     """Validate that all required credentials are provided"""
-    if channel_type not in CHANNEL_DEFINITIONS:
-        raise ValueError(f"Unsupported channel type: {channel_type}. Supported: {', '.join(CHANNEL_DEFINITIONS.keys())}")
+    supported = get_supported_channels()
+    if channel_type not in supported:
+        raise ValueError(f"Unsupported channel type: {channel_type}. Supported in this region: {', '.join(supported)}")
 
     defn = CHANNEL_DEFINITIONS[channel_type]
     required = set(defn["required"])

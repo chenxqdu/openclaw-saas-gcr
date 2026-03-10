@@ -11,11 +11,18 @@ from api.services.auth_svc import get_current_user
 from api.services.channel_svc import (
     build_crd_channel_patch,
     build_crd_channel_remove_patch,
+    get_supported_channels,
     validate_channel_credentials,
 )
 from api.services.k8s_client import k8s_client
 
 router = APIRouter(tags=["channels"])
+
+
+@router.get("/api/v1/channels")
+async def list_available_channels():
+    """List available channel types for this region"""
+    return {"channels": get_supported_channels()}
 
 
 async def get_agent_or_404(tenant_name: str, agent_id: int, current_user: User, db: AsyncSession):

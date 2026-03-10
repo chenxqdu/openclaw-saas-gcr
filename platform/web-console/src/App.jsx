@@ -621,10 +621,18 @@ function CreateAgentModal({ tenantName, onClose, onSuccess, onError }) {
 
 // ─── Channel Binding Modal ───
 function ChannelModal({ tenantName, agentId, agentName, onClose }) {
-  const [channelType, setChannelType] = useState('telegram')
+  const [channelType, setChannelType] = useState('')
+  const [availableChannels, setAvailableChannels] = useState([])
   const [creds, setCreds] = useState({})
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+
+  const CHANNEL_LABELS = {
+    telegram: 'Telegram',
+    feishu: 'Feishu (飞书)',
+    discord: 'Discord',
+    whatsapp: 'WhatsApp',
+  }
 
   const FIELDS = {
     telegram: [{ key: 'bot_token', label: 'Bot Token', placeholder: '123456:ABC-DEF...' }],
@@ -639,6 +647,19 @@ function ChannelModal({ tenantName, agentId, agentName, onClose }) {
       { key: 'verify_token', label: 'Verify Token', placeholder: 'my-verify-token' },
     ],
   }
+
+  useEffect(() => {
+    api.getAvailableChannels().then(res => {
+      const channels = res.channels || []
+      setAvailableChannels(channels)
+      if (channels.length > 0) setChannelType(channels[0])
+    }).catch(() => {
+      // Fallback to all channels if API fails
+      const fallback = ['telegram', 'feishu', 'discord', 'whatsapp']
+      setAvailableChannels(fallback)
+      setChannelType(fallback[0])
+    })
+  }, [])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -660,10 +681,9 @@ function ChannelModal({ tenantName, agentId, agentName, onClose }) {
           <div className="form-group">
             <label>Channel Type</label>
             <select className="form-input" value={channelType} onChange={e => { setChannelType(e.target.value); setCreds({}) }}>
-              <option value="telegram">Telegram</option>
-              <option value="feishu">Feishu (飞书)</option>
-              <option value="discord">Discord</option>
-              <option value="whatsapp">WhatsApp</option>
+              {availableChannels.map(ch => (
+                <option key={ch} value={ch}>{CHANNEL_LABELS[ch] || ch}</option>
+              ))}
             </select>
           </div>
           {FIELDS[channelType]?.map(f => (

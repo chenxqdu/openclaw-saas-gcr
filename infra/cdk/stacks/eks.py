@@ -51,7 +51,7 @@ class EksStack(cdk.Stack):
         )
 
         # Add Graviton managed node group (ARM64) with configurable params
-        nodegroup = self.cluster.add_nodegroup_capacity(
+        self.nodegroup = self.cluster.add_nodegroup_capacity(
             "GravitonNodes",
             instance_types=[ec2.InstanceType(config.eks_node_instance_type)],
             min_size=config.eks_node_min,

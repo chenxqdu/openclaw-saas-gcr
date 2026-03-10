@@ -98,6 +98,7 @@ iam_stack = IamStack(
     cluster=eks_stack.cluster,
     usage_queue_arn=sqs_stack.usage_queue.queue_arn,
     config=config,
+    node_role=eks_stack.nodegroup.role,
     env=env,
     description="OpenClaw SaaS IAM roles and policies",
 )

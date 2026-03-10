@@ -45,6 +45,10 @@ class Settings(BaseSettings):
 
     METRICS_EXPORTER_TAG: str = os.getenv("METRICS_EXPORTER_TAG", "latest")
 
+    # Available channels for this region (comma-separated)
+    # China region only supports feishu; global supports all
+    AVAILABLE_CHANNELS: str = os.getenv("AVAILABLE_CHANNELS", "feishu")
+
     @property
     def ecr_domain(self) -> str:
         return self.ECR_REGISTRY

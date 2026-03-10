@@ -20,6 +20,7 @@ class IamStack(cdk.Stack):
         cluster: eks.Cluster,
         usage_queue_arn: str,
         config,
+        node_role: iam.IRole = None,
         **kwargs
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -86,6 +87,24 @@ class IamStack(cdk.Stack):
         # NOTE: Bedrock is NOT available in AWS China regions.
         # No node Bedrock policy needed. Tenants must use external LLM providers
         # (OpenAI, Anthropic) with their own API keys.
+
+        # ——— Node Role SQS permissions ———
+        # OpenClaw agent pods run on nodes (not via IRSA), so the node instance
+        # role also needs SQS access for the metrics-exporter sidecar to push
+        # usage events.
+        if node_role is not None:
+            node_role.add_to_principal_policy(
+                iam.PolicyStatement(
+                    effect=iam.Effect.ALLOW,
+                    actions=[
+                        "sqs:SendMessage",
+                        "sqs:SendMessageBatch",
+                        "sqs:GetQueueUrl",
+                        "sqs:GetQueueAttributes",
+                    ],
+                    resources=[usage_queue_arn],
+                )
+            )
 
         # Outputs
         cdk.CfnOutput(
