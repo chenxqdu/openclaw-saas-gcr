@@ -1,15 +1,204 @@
+---
+# Source: openclaw-operator/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openclaw-operator
+  labels:
+    helm.sh/chart: openclaw-operator-0.26.2
+    app.kubernetes.io/name: openclaw-operator
+    app.kubernetes.io/instance: openclaw-operator
+    app.kubernetes.io/version: "0.26.2"
+    app.kubernetes.io/managed-by: Helm
+automountServiceAccountToken: true
+---
+# Source: openclaw-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: openclaw-operator-manager-role
+  labels:
+    helm.sh/chart: openclaw-operator-0.26.2
+    app.kubernetes.io/name: openclaw-operator
+    app.kubernetes.io/instance: openclaw-operator
+    app.kubernetes.io/version: "0.26.2"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  # Core API resources
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["serviceaccounts"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  # Apps API
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "delete"]
+  # Batch API (backup/restore Jobs, periodic backup CronJobs)
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["cronjobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # RBAC
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Networking
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies", "ingresses"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Policy
+  - apiGroups: ["policy"]
+    resources: ["poddisruptionbudgets"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Autoscaling
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Monitoring
+  - apiGroups: ["monitoring.coreos.com"]
+    resources: ["servicemonitors", "prometheusrules"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # OpenClaw CRDs
+  - apiGroups: ["openclaw.rocks"]
+    resources: ["openclawinstances"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["openclaw.rocks"]
+    resources: ["openclawinstances/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["openclaw.rocks"]
+    resources: ["openclawinstances/finalizers"]
+    verbs: ["update"]
+  # OpenClawSelfConfig CRD
+  - apiGroups: ["openclaw.rocks"]
+    resources: ["openclawselfconfigs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["openclaw.rocks"]
+    resources: ["openclawselfconfigs/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["openclaw.rocks"]
+    resources: ["openclawselfconfigs/finalizers"]
+    verbs: ["update"]
+---
+# Source: openclaw-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: openclaw-operator-manager-rolebinding
+  labels:
+    helm.sh/chart: openclaw-operator-0.26.2
+    app.kubernetes.io/name: openclaw-operator
+    app.kubernetes.io/instance: openclaw-operator
+    app.kubernetes.io/version: "0.26.2"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: openclaw-operator-manager-role
+subjects:
+  - kind: ServiceAccount
+    name: openclaw-operator
+    namespace: openclaw-operator-system
+---
+# Source: openclaw-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openclaw-operator-leader-election-role
+  labels:
+    helm.sh/chart: openclaw-operator-0.26.2
+    app.kubernetes.io/name: openclaw-operator
+    app.kubernetes.io/instance: openclaw-operator
+    app.kubernetes.io/version: "0.26.2"
+    app.kubernetes.io/managed-by: Helm
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+---
+# Source: openclaw-operator/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openclaw-operator-leader-election-rolebinding
+  labels:
+    helm.sh/chart: openclaw-operator-0.26.2
+    app.kubernetes.io/name: openclaw-operator
+    app.kubernetes.io/instance: openclaw-operator
+    app.kubernetes.io/version: "0.26.2"
+    app.kubernetes.io/managed-by: Helm
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: openclaw-operator-leader-election-role
+subjects:
+  - kind: ServiceAccount
+    name: openclaw-operator
+    namespace: openclaw-operator-system
+---
+# Source: openclaw-operator/templates/metrics-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw-operator-metrics
+  labels:
+    helm.sh/chart: openclaw-operator-0.26.2
+    app.kubernetes.io/name: openclaw-operator
+    app.kubernetes.io/instance: openclaw-operator
+    app.kubernetes.io/version: "0.26.2"
+    app.kubernetes.io/managed-by: Helm
+    control-plane: controller-manager
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openclaw-operator
+    app.kubernetes.io/instance: openclaw-operator
+    control-plane: controller-manager
+  ports:
+    - name: metrics
+      port: 8443
+      targetPort: metrics
+      protocol: TCP
+---
+# Source: openclaw-operator/templates/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: openclaw-operator
   labels:
-    helm.sh/chart: openclaw-operator-0.20.0
+    helm.sh/chart: openclaw-operator-0.26.2
     app.kubernetes.io/name: openclaw-operator
     app.kubernetes.io/instance: openclaw-operator
-    app.kubernetes.io/version: 0.20.0
+    app.kubernetes.io/version: "0.26.2"
     app.kubernetes.io/managed-by: Helm
     control-plane: controller-manager
-  namespace: openclaw-operator-system
 spec:
   replicas: 1
   selector:
@@ -22,10 +211,10 @@ spec:
       annotations:
         kubectl.kubernetes.io/default-container: manager
       labels:
-        helm.sh/chart: openclaw-operator-0.20.0
+        helm.sh/chart: openclaw-operator-0.26.2
         app.kubernetes.io/name: openclaw-operator
         app.kubernetes.io/instance: openclaw-operator
-        app.kubernetes.io/version: 0.20.0
+        app.kubernetes.io/version: "0.26.2"
         app.kubernetes.io/managed-by: Helm
         control-plane: controller-manager
     spec:
@@ -35,393 +224,53 @@ spec:
         seccompProfile:
           type: RuntimeDefault
       containers:
-      - name: manager
-        image: public.ecr.aws/i4x4j7g8/openclaw-saas/openclaw-operator:v0.20.0
-        imagePullPolicy: IfNotPresent
-        command:
-        - /manager
-        args:
-        - --leader-elect
-        - --health-probe-bind-address=:8081
-        - --metrics-bind-address=:8443
-        - --metrics-secure=true
-        env:
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        securityContext:
-          allowPrivilegeEscalation: false
-          capabilities:
-            drop:
-            - ALL
-          readOnlyRootFilesystem: true
-          runAsNonRoot: true
-          runAsUser: 65532
-        ports:
-        - name: health
-          containerPort: 8081
-          protocol: TCP
-        - name: metrics
-          containerPort: 8443
-          protocol: TCP
-        livenessProbe:
-          httpGet:
-            path: /healthz
-            port: 8081
-          initialDelaySeconds: 15
-          periodSeconds: 20
-        readinessProbe:
-          httpGet:
-            path: /readyz
-            port: 8081
-          initialDelaySeconds: 5
-          periodSeconds: 10
-        resources:
-          limits:
-            cpu: 500m
-            memory: 256Mi
-          requests:
-            cpu: 100m
-            memory: 128Mi
+        - name: manager
+          image: "public.ecr.aws/h4t8a9b8/openclaw-saas/openclaw-operator:v0.26.2"
+          imagePullPolicy: IfNotPresent
+          command:
+            - /manager
+          args:
+            - --leader-elect
+            - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:8443
+            - --metrics-secure=true
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+              - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+          ports:
+            - name: health
+              containerPort: 8081
+              protocol: TCP
+            - name: metrics
+              containerPort: 8443
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
       terminationGracePeriodSeconds: 10
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: openclaw-operator
-  labels:
-    helm.sh/chart: openclaw-operator-0.20.0
-    app.kubernetes.io/name: openclaw-operator
-    app.kubernetes.io/instance: openclaw-operator
-    app.kubernetes.io/version: 0.20.0
-    app.kubernetes.io/managed-by: Helm
-  namespace: openclaw-operator-system
-automountServiceAccountToken: true
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: openclaw-operator-manager-role
-  labels:
-    helm.sh/chart: openclaw-operator-0.20.0
-    app.kubernetes.io/name: openclaw-operator
-    app.kubernetes.io/instance: openclaw-operator
-    app.kubernetes.io/version: 0.20.0
-    app.kubernetes.io/managed-by: Helm
-rules:
-- apiGroups:
-  - ''
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - ''
-  resources:
-  - secrets
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-- apiGroups:
-  - ''
-  resources:
-  - services
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - ''
-  resources:
-  - serviceaccounts
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - ''
-  resources:
-  - persistentvolumeclaims
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - ''
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
-  - ''
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - apps
-  resources:
-  - statefulsets
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - apps
-  resources:
-  - deployments
-  verbs:
-  - get
-  - list
-  - watch
-  - delete
-- apiGroups:
-  - batch
-  resources:
-  - jobs
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - delete
-- apiGroups:
-  - batch
-  resources:
-  - cronjobs
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - rbac.authorization.k8s.io
-  resources:
-  - roles
-  - rolebindings
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - networking.k8s.io
-  resources:
-  - networkpolicies
-  - ingresses
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - policy
-  resources:
-  - poddisruptionbudgets
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - autoscaling
-  resources:
-  - horizontalpodautoscalers
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - monitoring.coreos.com
-  resources:
-  - servicemonitors
-  - prometheusrules
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - openclaw.rocks
-  resources:
-  - openclawinstances
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - openclaw.rocks
-  resources:
-  - openclawinstances/status
-  verbs:
-  - get
-  - update
-  - patch
-- apiGroups:
-  - openclaw.rocks
-  resources:
-  - openclawinstances/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - openclaw.rocks
-  resources:
-  - openclawselfconfigs
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - openclaw.rocks
-  resources:
-  - openclawselfconfigs/status
-  verbs:
-  - get
-  - update
-  - patch
-- apiGroups:
-  - openclaw.rocks
-  resources:
-  - openclawselfconfigs/finalizers
-  verbs:
-  - update
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: openclaw-operator-manager-rolebinding
-  labels:
-    helm.sh/chart: openclaw-operator-0.20.0
-    app.kubernetes.io/name: openclaw-operator
-    app.kubernetes.io/instance: openclaw-operator
-    app.kubernetes.io/version: 0.20.0
-    app.kubernetes.io/managed-by: Helm
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: openclaw-operator-manager-role
-subjects:
-- kind: ServiceAccount
-  name: openclaw-operator
-  namespace: openclaw-operator-system
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: openclaw-operator-leader-election-role
-  labels:
-    helm.sh/chart: openclaw-operator-0.20.0
-    app.kubernetes.io/name: openclaw-operator
-    app.kubernetes.io/instance: openclaw-operator
-    app.kubernetes.io/version: 0.20.0
-    app.kubernetes.io/managed-by: Helm
-  namespace: openclaw-operator-system
-rules:
-- apiGroups:
-  - ''
-  resources:
-  - configmaps
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - coordination.k8s.io
-  resources:
-  - leases
-  verbs:
-  - get
-  - list
-  - watch
-  - create
-  - update
-  - patch
-  - delete
-- apiGroups:
-  - ''
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: openclaw-operator-leader-election-rolebinding
-  labels:
-    helm.sh/chart: openclaw-operator-0.20.0
-    app.kubernetes.io/name: openclaw-operator
-    app.kubernetes.io/instance: openclaw-operator
-    app.kubernetes.io/version: 0.20.0
-    app.kubernetes.io/managed-by: Helm
-  namespace: openclaw-operator-system
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: openclaw-operator-leader-election-role
-subjects:
-- kind: ServiceAccount
-  name: openclaw-operator
-  namespace: openclaw-operator-system

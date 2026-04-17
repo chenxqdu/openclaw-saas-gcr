@@ -13,8 +13,8 @@ ADMIN_EMAIL="${ADMIN_EMAIL:-openclaw-saas-admin@example.com}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-OpenClaw2026!}"
 
 # All images from public.ecr.aws (accessible from CN)
-PLATFORM_IMAGE="${PLATFORM_IMAGE:-public.ecr.aws/i4x4j7g8/openclaw-saas/platform:v0.9.23-workshop}"
-BILLING_IMAGE="${BILLING_IMAGE:-public.ecr.aws/i4x4j7g8/openclaw-saas/billing-consumer:v0.1.0}"
+PLATFORM_IMAGE="${PLATFORM_IMAGE:-public.ecr.aws/h4t8a9b8/openclaw-saas/platform:v0.9.25-china}"
+BILLING_IMAGE="${BILLING_IMAGE:-public.ecr.aws/h4t8a9b8/openclaw-saas/billing-consumer:v0.1.0}"
 PLATFORM_REPLICAS="${PLATFORM_REPLICAS:-2}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -153,7 +153,7 @@ kubectl create secret generic platform-config \
   --from-literal="AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" \
   --from-literal="AWS_PARTITION=aws-cn" \
   --from-literal="AWS_REGION=$REGION" \
-  --from-literal="ECR_REGISTRY=public.ecr.aws/i4x4j7g8/openclaw-saas" \
+  --from-literal="ECR_REGISTRY=public.ecr.aws/h4t8a9b8/openclaw-saas" \
   --from-literal="JWT_SECRET=$JWT_SECRET" \
   --from-literal="METRICS_EXPORTER_TAG=v0.1.0" \
   --from-literal="SQS_QUEUE_URL=$SQS_QUEUE_URL" \

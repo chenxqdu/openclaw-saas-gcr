@@ -50,7 +50,7 @@ spec:
             - name: LOG_LEVEL
               value: "INFO"
             - name: AVAILABLE_CHANNELS
-              value: "feishu"
+              value: "feishu,wecom"
           resources:
             requests:
               cpu: 100m

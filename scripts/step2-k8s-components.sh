@@ -56,7 +56,7 @@ aws eks describe-addon --cluster-name "$CLUSTER_NAME" --addon-name aws-efs-csi-d
   --region "$REGION" --query 'addon.{Status:status,Version:addonVersion}' --output table
 
 # 2. ALB Controller (OCI chart from public.ecr.aws — no GitHub repo access needed)
-ALB_CHART="${ALB_CHART:-oci://public.ecr.aws/i4x4j7g8/openclaw-saas/charts/aws-load-balancer-controller}"
+ALB_CHART="${ALB_CHART:-oci://public.ecr.aws/h4t8a9b8/openclaw-saas/charts/aws-load-balancer-controller}"
 ALB_VERSION="${ALB_VERSION:-3.1.0}"
 
 echo ""
@@ -93,7 +93,7 @@ kubectl get crd openclawinstances.openclaw.rocks openclawselfconfigs.openclaw.ro
 echo ""
 echo ">>> [5/5] Deploying OpenClaw Operator..."
 kubectl create namespace openclaw-operator-system 2>/dev/null || true
-kubectl apply --server-side --force-conflicts -f "$SCRIPT_DIR/../yaml/openclaw-operator.yaml"
+kubectl apply --server-side --force-conflicts -n openclaw-operator-system -f "$SCRIPT_DIR/../yaml/openclaw-operator.yaml"
 
 echo ""
 echo ">>> Waiting for operator to be ready..."
@@ -126,7 +126,7 @@ spec:
       - operator: Exists
       containers:
       - name: prepull
-        image: public.ecr.aws/i4x4j7g8/openclaw-saas/busybox:1.37.0
+        image: public.ecr.aws/h4t8a9b8/openclaw-saas/busybox:1.37.0
         securityContext:
           privileged: true
         command: ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "--", "sh", "-c"]
@@ -134,37 +134,35 @@ spec:
         - |
           echo "=== Pulling and retagging images ==="
           # nginx (operator injects as docker.io/library/nginx:1.27-alpine)
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/nginx:1.27-alpine 2>&1
-          ctr -n k8s.io images tag --force public.ecr.aws/i4x4j7g8/openclaw-saas/nginx:1.27-alpine docker.io/library/nginx:1.27-alpine 2>&1
+          ctr -n k8s.io images pull public.ecr.aws/h4t8a9b8/openclaw-saas/nginx:1.27-alpine 2>&1
+          ctr -n k8s.io images tag --force public.ecr.aws/h4t8a9b8/openclaw-saas/nginx:1.27-alpine docker.io/library/nginx:1.27-alpine 2>&1
           echo "nginx done"
+          # opentelemetry-collector
+          ctr -n k8s.io images pull public.ecr.aws/h4t8a9b8/openclaw-saas/opentelemetry-collector:0.120.0 2>&1                              
+          ctr -n k8s.io images tag --force public.ecr.aws/h4t8a9b8/openclaw-saas/opentelemetry-collector:0.120.0 docker.io/otel/opentelemetry-collector:0.120.0 2>&1
+          echo "opentelemetry-collector done"
           # uv (operator injects as ghcr.io/astral-sh/uv:0.6-bookworm-slim)
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/uv:0.6-bookworm-slim 2>&1
-          ctr -n k8s.io images tag --force public.ecr.aws/i4x4j7g8/openclaw-saas/uv:0.6-bookworm-slim ghcr.io/astral-sh/uv:0.6-bookworm-slim 2>&1
+          ctr -n k8s.io images pull public.ecr.aws/h4t8a9b8/openclaw-saas/uv:0.6-bookworm-slim 2>&1
+          ctr -n k8s.io images tag --force public.ecr.aws/h4t8a9b8/openclaw-saas/uv:0.6-bookworm-slim ghcr.io/astral-sh/uv:0.6-bookworm-slim 2>&1
           echo "uv done"
           # tailscale (operator injects as ghcr.io/tailscale/tailscale if enabled)
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/tailscale:2026.03.18 2>&1
-          ctr -n k8s.io images tag --force public.ecr.aws/i4x4j7g8/openclaw-saas/tailscale:2026.03.18 ghcr.io/tailscale/tailscale:latest 2>&1
+          ctr -n k8s.io images pull public.ecr.aws/h4t8a9b8/openclaw-saas/tailscale:2026.03.18 2>&1
+          ctr -n k8s.io images tag --force public.ecr.aws/h4t8a9b8/openclaw-saas/tailscale:2026.03.18 ghcr.io/tailscale/tailscale:latest 2>&1
           echo "tailscale done"
           # metrics-exporter (platform API code generates image name as openclaw-saas-dev-metrics-exporter)
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/openclaw-saas-dev-metrics-exporter:v0.1.0 2>&1
+          ctr -n k8s.io images pull public.ecr.aws/h4t8a9b8/openclaw-saas/openclaw-saas-dev-metrics-exporter:v0.1.0 2>&1
           echo "metrics-exporter done"
-          # openclaw agent image (CRD default)
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/openclaw:2026.3.13-1 2>&1
-          echo "openclaw done"
-          # openclaw-custom image (for custom agent image with kiro/acpx/tavily)
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/openclaw-custom:2026.3.22 2>&1
-          echo "openclaw-custom done"
 
           # rclone image 
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/rclone:1.68 2>&1
-          ctr -n k8s.io images tag --force public.ecr.aws/i4x4j7g8/openclaw-saas/rclone:1.68 docker.io/rclone/rclone:1.68 2>&1
+          ctr -n k8s.io images pull public.ecr.aws/h4t8a9b8/openclaw-saas/rclone:1.68 2>&1
+          ctr -n k8s.io images tag --force public.ecr.aws/h4t8a9b8/openclaw-saas/rclone:1.68 docker.io/rclone/rclone:1.68 2>&1
           echo "openclaw-custom done"
           # chromium sidecar (CRD default uses public.ecr.aws, also retag for ghcr.io fallback)
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/chromium:2026.03.17 2>&1
-          ctr -n k8s.io images tag --force public.ecr.aws/i4x4j7g8/openclaw-saas/chromium:2026.03.17 ghcr.io/browserless/chromium:latest 2>&1
+          ctr -n k8s.io images pull public.ecr.aws/h4t8a9b8/openclaw-saas/chromium:2026.03.17 2>&1
+          ctr -n k8s.io images tag --force public.ecr.aws/h4t8a9b8/openclaw-saas/chromium:2026.03.17 ghcr.io/browserless/chromium:latest 2>&1
           echo "chromium done"
           # billing-consumer (SQS consumer + aggregator)
-          ctr -n k8s.io images pull public.ecr.aws/i4x4j7g8/openclaw-saas/billing-consumer:v0.1.0 2>&1
+          ctr -n k8s.io images pull public.ecr.aws/h4t8a9b8/openclaw-saas/billing-consumer:v0.1.0 2>&1
           echo "billing-consumer done"
           echo "=== All images ready ==="
           sleep 3600

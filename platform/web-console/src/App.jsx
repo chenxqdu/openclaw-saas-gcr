@@ -499,7 +499,7 @@ function CreateAgentModal({ tenantName, onClose, onSuccess, onError }) {
   const [model, setModel] = useState('')
   const [apiKeys, setApiKeys] = useState({})
   const [enableChromium, setEnableChromium] = useState(false)
-  const [showAdvanced, setShowAdvanced] = useState(false)
+
   const [customImage, setCustomImage] = useState('')
   const [customImageTag, setCustomImageTag] = useState('')
   const [error, setError] = useState('')
@@ -622,39 +622,24 @@ function CreateAgentModal({ tenantName, onClose, onSuccess, onError }) {
               </div>
             </div>
           )}
-
+          <div style={{background:'var(--bg-secondary)', padding:'12px', borderRadius:'8px', marginBottom:'12px'}}>
+            <div className="form-group" style={{marginBottom:'8px'}}>
+              <label style={{fontSize:'12px'}}>Image Repository</label>
+              <input className="form-input" value={customImage} onChange={e => setCustomImage(e.target.value)}
+                placeholder="e.g. public.ecr.aws/xxx/openclaw-custom" />
+            </div>
+            <div className="form-group" style={{marginBottom:'0'}}>
+              <label style={{fontSize:'12px'}}>Image Tag</label>
+              <input className="form-input" value={customImageTag} onChange={e => setCustomImageTag(e.target.value)}
+                placeholder="e.g. 2026.3.21 (default: latest)" />
+            </div>
+          </div>
           <div style={{background:'var(--bg-secondary)', padding:'12px', borderRadius:'8px', marginBottom:'12px'}}>
             <label style={{display:'flex', alignItems:'center', gap:'8px', cursor:'pointer', fontSize:'13px'}}>
               <input type="checkbox" checked={enableChromium} onChange={e => setEnableChromium(e.target.checked)} />
               <span>🌐 <strong>Enable Browser</strong> — adds Chromium sidecar for web automation (+500m CPU, +1Gi mem)</span>
             </label>
           </div>
-
-          <div style={{marginBottom:'12px'}}>
-            <button type="button" className="btn btn-sm" onClick={() => setShowAdvanced(!showAdvanced)}
-              style={{fontSize:'12px', color:'var(--text-secondary)'}}>
-              {showAdvanced ? '▼' : '▶'} Advanced Options
-            </button>
-            {showAdvanced && (
-              <div style={{background:'var(--bg-secondary)', padding:'12px', borderRadius:'8px', marginTop:'8px'}}>
-                <p style={{fontSize:'12px', color:'var(--text-secondary)', marginBottom:'8px'}}>
-                  🐳 <strong>Custom Container Image</strong> — use a custom-built OpenClaw image with pre-installed tools.
-                  Leave empty to use the platform default.
-                </p>
-                <div className="form-group" style={{marginBottom:'8px'}}>
-                  <label style={{fontSize:'12px'}}>Image Repository</label>
-                  <input className="form-input" value={customImage} onChange={e => setCustomImage(e.target.value)}
-                    placeholder="e.g. public.ecr.aws/xxx/openclaw-custom" />
-                </div>
-                <div className="form-group" style={{marginBottom:'0'}}>
-                  <label style={{fontSize:'12px'}}>Image Tag</label>
-                  <input className="form-input" value={customImageTag} onChange={e => setCustomImageTag(e.target.value)}
-                    placeholder="e.g. 2026.3.21 (default: latest)" />
-                </div>
-              </div>
-            )}
-          </div>
-
           <div className="modal-actions">
             <button type="button" className="btn" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn btn-primary" disabled={submitting}>
@@ -680,6 +665,7 @@ function ChannelModal({ tenantName, agentId, agentName, onClose }) {
     feishu: 'Feishu (飞书)',
     discord: 'Discord',
     whatsapp: 'WhatsApp',
+    wecom: 'WeCom (企业微信)',
   }
 
   const FIELDS = {
@@ -693,6 +679,10 @@ function ChannelModal({ tenantName, agentId, agentName, onClose }) {
       { key: 'phone_number_id', label: 'Phone Number ID', placeholder: '123456789' },
       { key: 'access_token', label: 'Access Token', placeholder: 'EAA...' },
       { key: 'verify_token', label: 'Verify Token', placeholder: 'my-verify-token' },
+    ],
+    wecom: [
+      { key: 'bot_id', label: 'Bot ID (机器人ID)', placeholder: 'your-bot-id' },                                                                                                                   
+      { key: 'secret', label: 'Secret (机器人密钥)', placeholder: 'your-bot-secret' }, 
     ],
   }
 

@@ -59,6 +59,16 @@ CHANNEL_DEFINITIONS = {
             },
         },
     },
+     "wecom": {
+        "required": ["bot_id", "secret"],
+        "optional": [],
+        "build": lambda creds: {
+            "enabled": True,
+            "connectionMode": "websocket",
+            "botId": creds["bot_id"],
+            "secret": creds["secret"],
+        },
+    },   
 }
 
 

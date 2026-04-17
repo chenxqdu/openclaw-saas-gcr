@@ -183,5 +183,5 @@ class LLMUpdateRequest(BaseModel):
 class ChannelBindRequest(BaseModel):
     """Channel binding request schema"""
 
-    channel_type: str = Field(..., pattern="^(telegram|feishu|discord|whatsapp)$")
+    channel_type: str = Field(..., pattern="^(telegram|feishu|discord|whatsapp|wecom)$")
     credentials: Dict[str, str]

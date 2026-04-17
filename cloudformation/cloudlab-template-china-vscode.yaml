@@ -33,8 +33,7 @@ Parameters:
 
   AvailabilityZones:
     Type: List<AWS::EC2::AvailabilityZone::Name>
-    Default: "cn-northwest-1a,cn-northwest-1b,cn-northwest-1c"
-    Description: Three availability zones (e.g. cn-northwest-1a, cn-northwest-1b, cn-northwest-1c)
+    Description: Availability zones in deployment region
 
   SystemNodeInstanceTypes:
     Type: String

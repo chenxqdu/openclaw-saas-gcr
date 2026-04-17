@@ -123,14 +123,14 @@ HOME=/home/openclaw/.openclaw exec kiro-cli "$@"
 ```bash
 # arm64 (Graviton)
 docker build --platform linux/arm64 \
-  -t public.ecr.aws/i4x4j7g8/openclaw-saas/openclaw-custom:TAG \
-  -t public.ecr.aws/i4x4j7g8/openclaw-saas/openclaw-custom:latest \
+  -t public.ecr.aws/h4t8a9b8/openclaw-saas/openclaw-custom:TAG \
+  -t public.ecr.aws/h4t8a9b8/openclaw-saas/openclaw-custom:latest \
   .
 
 # 推送
-aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/i4x4j7g8
-docker push public.ecr.aws/i4x4j7g8/openclaw-saas/openclaw-custom:TAG
-docker push public.ecr.aws/i4x4j7g8/openclaw-saas/openclaw-custom:latest
+aws ecr-public get-login-password --region us-east-1 | docker login --username AWS --password-stdin public.ecr.aws/h4t8a9b8
+docker push public.ecr.aws/h4t8a9b8/openclaw-saas/openclaw-custom:TAG
+docker push public.ecr.aws/h4t8a9b8/openclaw-saas/openclaw-custom:latest
 ```
 
 ## 部署更新

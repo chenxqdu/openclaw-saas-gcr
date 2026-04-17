@@ -8,10 +8,10 @@ metadata:
     "helm.sh/resource-policy": keep
   name: openclawselfconfigs.openclaw.rocks
   labels:
-    helm.sh/chart: openclaw-operator-0.20.0
+    helm.sh/chart: openclaw-operator-0.26.2
     app.kubernetes.io/name: openclaw-operator
     app.kubernetes.io/instance: openclaw-operator
-    app.kubernetes.io/version: "0.20.0"
+    app.kubernetes.io/version: "0.26.2"
     app.kubernetes.io/managed-by: Helm
 spec:
   group: openclaw.rocks

@@ -140,7 +140,7 @@ bash scripts/destroy.sh
 
 ## 镜像来源
 
-所有镜像从 `public.ecr.aws/i4x4j7g8/openclaw-saas/` 拉取（中国区可访问）：
+所有镜像从 `public.ecr.aws/h4t8a9b8/openclaw-saas/` 拉取（中国区可访问）：
 
 | 镜像 | Tag | 用途 |
 |------|-----|------|

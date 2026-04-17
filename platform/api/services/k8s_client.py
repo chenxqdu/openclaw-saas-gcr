@@ -311,28 +311,43 @@ class K8sClient:
         if channel_config:
             raw_config["channels"] = channel_config
 
-        # ACP + Kiro configuration (ref: setup-kiro.sh)
-        # Only enable when using a custom image that has acpx pre-installed.
-        # Standard openclaw image has readOnlyRootFilesystem — npm install to
-        # /app/extensions/acpx/node_modules will fail with ENOENT.
-        if effective_image:
-            raw_config["plugins"] = raw_config.get("plugins", {})
-            raw_config["plugins"]["entries"] = raw_config["plugins"].get("entries", {})
-            raw_config["plugins"]["entries"]["acpx"] = {
+        # Enable wecom plugin (official WeCom channel by Tencent)
+        raw_config.setdefault("plugins", {"allow": [], "entries": {}})
+        raw_config["plugins"].setdefault("allow", [])
+        raw_config["plugins"].setdefault("entries", {})
+        raw_config["plugins"].setdefault("load", {}).setdefault("paths", [])
+        
+        if "wecom-openclaw-plugin" not in raw_config["plugins"]["allow"]:
+            raw_config["plugins"]["allow"].append("wecom-openclaw-plugin")
+        raw_config["plugins"]["entries"]["wecom-openclaw-plugin"] = {
+            "enabled": True,
+        }
+    
+        wecom_plugin_path = "/home/openclaw/.openclaw/node_modules/@wecom/wecom-openclaw-plugin"
+        raw_config["plugins"]["load"]["paths"].append(wecom_plugin_path)
+
+        # Enable diagnostics-otel plugin so OpenClaw exports metrics/traces
+        # to the otel-collector sidecar (managed by operator)
+    
+        if "diagnostics-otel" not in raw_config["plugins"]["allow"]:
+            raw_config["plugins"]["allow"].append("diagnostics-otel")
+        raw_config["plugins"]["entries"]["diagnostics-otel"] = {
+            "enabled": True,
+        }
+        raw_config["diagnostics"] = {
+            "enabled": True,
+            "otel": {
                 "enabled": True,
-                "config": {
-                    "permissionMode": "approve-all",
-                    "nonInteractivePermissions": "deny",
-                },
-            }
-            raw_config["acp"] = {
-                "enabled": True,
-                "backend": "acpx",
-                "defaultAgent": "kiro",
-                "allowedAgents": ["kiro", "codex", "claude", "gemini", "opencode"],
-                "maxConcurrentSessions": 8,
-                "runtime": {"ttlMinutes": 120},
-            }
+                "endpoint": "http://localhost:4318",
+                "protocol": "http/protobuf",
+                "serviceName": f"{tenant_name}-{agent_name}",
+                "traces": False,
+                "metrics": True,
+                "logs": False,
+                "flushIntervalMs": 30000,
+            },
+        }
+    
 
         raw_config["tools"] = {
             "exec": {"security": "full", "ask": "off"},
@@ -340,13 +355,12 @@ class K8sClient:
 
         # Gateway: local mode required so sessions_spawn (acpx) can connect
         # without triggering "pairing required" (1008) rejection.
-        if effective_image:
-            raw_config["gateway"] = {
-                "mode": "local",
-                "auth": {
-                    "mode": "none",
-                },
-            }
+        raw_config["gateway"] = {
+            "mode": "local",
+            "auth": {
+                "mode": "none",
+            },
+        }
 
         # 3) Build CRD body
         sqs_queue_url = settings.sqs_url
@@ -368,6 +382,7 @@ class K8sClient:
                     "tag": effective_image_tag or "latest",
                     "pullPolicy": "Always",
                 }} if effective_image else {}),
+                "plugins": ["@wecom/wecom-openclaw-plugin"],
                 "envFrom": [{"secretRef": {"name": f"{agent_name}-keys"}}],
                 "env": [{"name": "NODE_OPTIONS", "value": "--max-old-space-size=3072"}],
                 "config": {
@@ -375,20 +390,6 @@ class K8sClient:
                     "raw": raw_config,
                 },
                 "storage": {"persistence": {"enabled": True, "size": "50Gi"}},
-                # Seed .acpxrc.json into workspace so acpx can find kiro agent config.
-                # This is the project-level config; acpx reads it when cwd is the workspace.
-                # Global ~/.acpx/config.json is NOT accessible because operator creates
-                # /home/openclaw as root:root and the PVC only covers .openclaw/ subdirectory.
-                "workspace": {
-                    "initialFiles": {
-                        ".acpxrc.json": json.dumps({
-                            "defaultAgent": "kiro",
-                            "agents": {
-                                "kiro": {"command": "/home/openclaw/.openclaw/.kiro-wrapper.sh acp --trust-all-tools"},
-                            },
-                        }),
-                    },
-                },
                 "chromium": {
                     "enabled": enable_chromium,
                     **({"extraEnv": [
@@ -396,70 +397,10 @@ class K8sClient:
                         {"name": "CONNECTION_TIMEOUT", "value": "120000"},
                     ]} if enable_chromium else {}),
                 },
-                # Init container: copy skills + playbook + kiro config from custom image
-                # to PVC, create .acpx dir, install kiro wrapper, and clean stale device
-                # identity (prevents sessions_spawn pairing failures on pod restart).
-                # Only needed when using a custom image (standard image has no staging area).
-                **({"initContainers": [{
-                    "name": "init-custom",
-                    "image": effective_image + ":" + (effective_image_tag or "latest"),
-                    "command": ["sh", "-c", " && ".join([
-                        "mkdir -p /data/skills /data/.acpx/sessions /data/.kiro",
-                        "cp -r /opt/openclaw-custom/skills/* /data/skills/ 2>/dev/null || true",
-                        "cp -r /opt/openclaw-custom/.kiro/* /data/.kiro/ 2>/dev/null || true",
-                        "[ -f /opt/openclaw-custom/KIRO-PLAYBOOK.md ] && cp -f /opt/openclaw-custom/KIRO-PLAYBOOK.md /data/workspace/KIRO-PLAYBOOK.md || true",
-                        "[ -f /opt/openclaw-custom/.kiro-wrapper.sh ] && cp -f /opt/openclaw-custom/.kiro-wrapper.sh /data/.kiro-wrapper.sh || true",
-                        "rm -rf /data/identity /data/devices",
-                        # Inject Kiro playbook reference into AGENTS.md if not already present
-                        "grep -q 'KIRO-PLAYBOOK' /data/workspace/AGENTS.md 2>/dev/null || printf '\\n## Kiro 调用\\n当需要调用 Kiro 完成任务时，先读 `KIRO-PLAYBOOK.md`，严格按其中的规范执行。不要跳过看门狗流程。\\n' >> /data/workspace/AGENTS.md",
-                        "chown -R 1000:1000 /data/skills /data/.acpx /data/.kiro /data/.kiro-wrapper.sh",
-                    ])],
-                    "volumeMounts": [{"name": "data", "mountPath": "/data"}],
-                    "resources": {
-                        "requests": {"cpu": "10m", "memory": "16Mi"},
-                        "limits": {"cpu": "100m", "memory": "64Mi"},
-                    },
-                }]} if effective_image else {}),
                 "resources": {
                     "requests": {"cpu": "500m", "memory": "2Gi"},
                     "limits": {"cpu": "2", "memory": "4Gi"},
                 },
-                # Metrics exporter sidecar - reads JSONL from shared PVC
-                "sidecars": [
-                    {
-                        "name": "metrics-exporter",
-                        "image": settings.metrics_exporter_image,
-                        "env": [
-                            {"name": "TENANT_NAME", "value": tenant_name},
-                            {"name": "AGENT_NAME", "value": agent_name},
-                            {"name": "SQS_QUEUE_URL", "value": sqs_queue_url},
-                            {"name": "AWS_DEFAULT_REGION", "value": settings.AWS_REGION},
-                            {"name": "SCAN_INTERVAL_SECONDS", "value": "30"},
-                            {"name": "METRICS_PORT", "value": "9090"},
-                        ],
-                        "ports": [{"containerPort": 9090, "name": "metrics"}],
-                        "resources": {
-                            "requests": {"cpu": "25m", "memory": "64Mi"},
-                            "limits": {"cpu": "100m", "memory": "128Mi"},
-                        },
-                        "volumeMounts": [
-                            {
-                                "name": "data",
-                                "mountPath": "/home/openclaw/.openclaw",
-                                "readOnly": True,
-                            }
-                        ],
-                        "securityContext": {
-                            "runAsNonRoot": True,
-                            "runAsUser": 1000,
-                            "runAsGroup": 1000,
-                            "allowPrivilegeEscalation": False,
-                            "readOnlyRootFilesystem": True,
-                            "capabilities": {"drop": ["ALL"]},
-                            "seccompProfile": {"type": "RuntimeDefault"},
-                        },
-                    }
-                ],
             },
         }
 
