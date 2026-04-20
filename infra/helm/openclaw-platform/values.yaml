@@ -1,0 +1,66 @@
+# OpenClaw Platform Helm Chart Values
+
+image:
+  platform: public.ecr.aws/bingjiao/openclaw-saas-platform
+  platformTag: "v0.9.55"
+  billingConsumer: public.ecr.aws/bingjiao/openclaw-saas-billing-consumer
+  billingConsumerTag: "v0.1.0"
+  metricsExporter: public.ecr.aws/bingjiao/openclaw-saas-metrics-exporter
+  metricsExporterTag: "v0.3.0"
+  pullPolicy: Always
+
+# Database mode: sqlite or postgres
+db:
+  mode: sqlite          # sqlite (workshop) or postgres (production)
+  # SQLite options (only used when mode=sqlite)
+  sqlite:
+    storageClass: ebs-sc
+    size: 10Gi
+  # Postgres (only used when mode=postgres)
+  # url is read from secret.databaseUrl below
+
+# Billing consumer sidecar
+billing:
+  enabled: true
+
+# Networking
+service:
+  # NLB prefix list IDs (comma-separated). Empty = allow all.
+  # Example: "pl-82a045eb" for CloudFront (us-west-2)
+  nlbPrefixLists: ""
+
+ingress:
+  enabled: false        # true = ALB with custom domain
+  certArn: ""
+  host: ""
+
+# Platform config (stored in Secret)
+config:
+  adminEmail: "admin@workshop.openclaw.dev"
+  adminPassword: "Workshop2026!Admin"
+  jwtSecret: ""         # auto-generated if empty
+  logLevel: INFO
+  availableChannels: ""
+  defaultAgentImage: ""
+  defaultAgentImageTag: latest
+  ecrRegistry: "public.ecr.aws/bingjiao"
+  sqsQueueUrl: ""
+  awsRegion: ""         # auto-detected from node if empty
+  awsPartition: aws
+  awsAccountId: ""
+
+resources:
+  api:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  billing:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi

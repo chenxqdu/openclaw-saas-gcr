@@ -152,6 +152,80 @@ class EksStack(cdk.Stack):
         )
         gp3_storage_class.node.add_dependency(ebs_csi_addon)
 
+        # ─── AWS Load Balancer Controller ───────────────────────────────────
+        # IRSA for the controller
+        lb_controller_conditions = cdk.CfnJson(
+            self, "LbControllerCondition",
+            value={
+                f"{oidc_provider.open_id_connect_provider_issuer}:sub":
+                    "system:serviceaccount:kube-system:aws-load-balancer-controller",
+                f"{oidc_provider.open_id_connect_provider_issuer}:aud":
+                    sts_aud,
+            },
+        )
+
+        lb_controller_role = iam.Role(
+            self,
+            "LbControllerRole",
+            assumed_by=iam.FederatedPrincipal(
+                oidc_provider.open_id_connect_provider_arn,
+                conditions={"StringEquals": lb_controller_conditions},
+                assume_role_action="sts:AssumeRoleWithWebIdentity",
+            ),
+            managed_policies=[
+                iam.ManagedPolicy.from_aws_managed_policy_name(
+                    "ElasticLoadBalancingFullAccess"
+                )
+            ],
+        )
+        # Additional permissions needed by LB Controller
+        lb_controller_role.add_to_policy(iam.PolicyStatement(
+            actions=[
+                "ec2:DescribeAccountAttributes",
+                "ec2:DescribeAddresses",
+                "ec2:DescribeAvailabilityZones",
+                "ec2:DescribeInternetGateways",
+                "ec2:DescribeVpcs",
+                "ec2:DescribeVpcPeeringConnections",
+                "ec2:DescribeSubnets",
+                "ec2:DescribeSecurityGroups",
+                "ec2:DescribeInstances",
+                "ec2:DescribeNetworkInterfaces",
+                "ec2:DescribeTags",
+                "ec2:GetCoipPoolUsage",
+                "ec2:DescribeCoipPools",
+                "ec2:AuthorizeSecurityGroupIngress",
+                "ec2:RevokeSecurityGroupIngress",
+                "ec2:CreateSecurityGroup",
+                "ec2:CreateTags",
+                "ec2:DeleteTags",
+                "ec2:DeleteSecurityGroup",
+                "ec2:ModifyNetworkInterfaceAttribute",
+            ],
+            resources=["*"],
+        ))
+
+        lb_controller_chart = self.cluster.add_helm_chart(
+            "AwsLoadBalancerController",
+            chart="aws-load-balancer-controller",
+            repository="https://aws.github.io/eks-charts",
+            namespace="kube-system",
+            release="aws-load-balancer-controller",
+            values={
+                "clusterName": self.cluster.cluster_name,
+                "serviceAccount": {
+                    "create": True,
+                    "name": "aws-load-balancer-controller",
+                    "annotations": {
+                        "eks.amazonaws.com/role-arn": lb_controller_role.role_arn,
+                    },
+                },
+                "region": self.region,
+                "vpcId": vpc.vpc_id,
+            },
+        )
+        lb_controller_chart.node.add_dependency(self.nodegroup)
+
         # openclaw-operator namespace
         self.cluster.add_manifest(
             "OperatorNamespace",

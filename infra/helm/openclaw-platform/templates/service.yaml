@@ -1,32 +1,29 @@
+{{- if not .Values.ingress.enabled }}
 apiVersion: v1
 kind: Service
 metadata:
-  name: platform-api
-  namespace: openclaw-platform
+  name: {{ include "openclaw-platform.fullname" . }}
+  namespace: {{ .Release.Namespace }}
   labels:
-    app: platform-api
+    {{- include "openclaw-platform.labels" . | nindent 4 }}
   annotations:
-    # AWS Load Balancer Controller v2.4+: "external" ensures the controller
-    # manages this NLB (not the in-tree cloud provider). The legacy "nlb"
-    # value may fall through to in-tree, losing SG/target-group management.
     service.beta.kubernetes.io/aws-load-balancer-type: "external"
     service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
     service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
     service.beta.kubernetes.io/aws-load-balancer-attributes: "load_balancing.cross_zone.enabled=true"
-    # Security: restrict NLB inbound to CloudFront prefix list.
-    # LB Controller creates a managed SG with these prefix lists as inbound rules.
-    # Set to empty to allow all (e.g. workshop/dev). Override via envsubst.
-    service.beta.kubernetes.io/aws-load-balancer-security-group-prefix-lists: "${NLB_SG_PREFIX_LISTS}"
-    # Health check
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-path: "/health"
     service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol: "HTTP"
+    {{- if .Values.service.nlbPrefixLists }}
+    service.beta.kubernetes.io/aws-load-balancer-security-group-prefix-lists: {{ .Values.service.nlbPrefixLists | quote }}
+    {{- end }}
 spec:
   type: LoadBalancer
   loadBalancerClass: service.k8s.aws/nlb
   selector:
-    app: platform-api
+    {{- include "openclaw-platform.selectorLabels" . | nindent 4 }}
   ports:
     - port: 80
       targetPort: 8000
       protocol: TCP
       name: http
+{{- end }}

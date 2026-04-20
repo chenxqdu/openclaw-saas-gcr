@@ -1,0 +1,18 @@
+OpenClaw Platform deployed!
+
+Get the application URL:
+{{- if .Values.ingress.enabled }}
+  http://{{ .Values.ingress.host }}
+{{- else }}
+  export PROVISIONING_SERVICE_URL="http://$(kubectl get svc {{ include "openclaw-platform.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+  echo "$PROVISIONING_SERVICE_URL"
+{{- end }}
+
+Admin credentials:
+  Email:    {{ .Values.config.adminEmail }}
+  Password: (set via config.adminPassword)
+
+Endpoints:
+  Health:      $PROVISIONING_SERVICE_URL/health
+  API Docs:    $PROVISIONING_SERVICE_URL/docs
+  Web Console: $PROVISIONING_SERVICE_URL/console

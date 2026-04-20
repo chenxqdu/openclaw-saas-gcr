@@ -1,0 +1,15 @@
+{{- if eq .Values.db.mode "sqlite" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openclaw-platform.fullname" . }}-data
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "openclaw-platform.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ .Values.db.sqlite.storageClass | quote }}
+  resources:
+    requests:
+      storage: {{ .Values.db.sqlite.size | quote }}
+{{- end }}

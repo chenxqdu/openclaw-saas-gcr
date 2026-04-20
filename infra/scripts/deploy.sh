@@ -313,11 +313,23 @@ deploy_platform_api() {
   local acm_cert_arn=$(get_stack_output "${STACK_PREFIX}-dns" "CertificateArn" || echo "")
   local domain_name=$(get_stack_output "${STACK_PREFIX}-dns" "DomainName" || echo "")
 
-  # Get NLB Security Group ID from CDK (CloudFront prefix list restricted)
-  local nlb_sg_id=$(get_stack_output "${STACK_PREFIX}-dns" "NlbSecurityGroupId" || echo "")
-  if [[ -n "${nlb_sg_id}" ]]; then
-    export NLB_SECURITY_GROUP_ID="${nlb_sg_id}"
-    log_info "Using CDK-managed NLB Security Group: ${nlb_sg_id}"
+  # CloudFront prefix list for NLB SG inbound rules (LB Controller native annotation).
+  # When domain is configured, restrict NLB to CloudFront only.
+  # Prefix list ID is region-specific — look up dynamically.
+  if [[ -n "$(get_stack_output "${STACK_PREFIX}-dns" "DomainName" 2>/dev/null || echo "")" ]]; then
+    if [[ -z "${NLB_SG_PREFIX_LISTS:-}" ]]; then
+      NLB_SG_PREFIX_LISTS=$(aws ec2 describe-managed-prefix-lists \
+        --filters "Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing" \
+        --query "PrefixLists[0].PrefixListId" --output text 2>/dev/null || echo "")
+    fi
+    export NLB_SG_PREFIX_LISTS
+    if [[ -n "${NLB_SG_PREFIX_LISTS}" ]]; then
+      log_info "NLB restricted to CloudFront prefix list: ${NLB_SG_PREFIX_LISTS}"
+    else
+      log_warn "Could not find CloudFront prefix list for this region — NLB will be open"
+    fi
+  else
+    export NLB_SG_PREFIX_LISTS=""
   fi
 
   # Apply K8s manifests with substitution
