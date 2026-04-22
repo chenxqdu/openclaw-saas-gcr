@@ -120,30 +120,30 @@ done
 
 ```bash
 # Agent 镜像
-docker pull ghcr.io/openclaw/openclaw:latest
+docker pull --platform linux/arm64 ghcr.io/openclaw/openclaw:latest
 docker tag  ghcr.io/openclaw/openclaw:latest ${ECR}/openclaw/openclaw:latest
 docker push ${ECR}/openclaw/openclaw:latest
 
 # Operator 镜像
-docker pull ghcr.io/openclaw-rocks/openclaw-operator:v0.26.2
+docker pull --platform linux/arm64 ghcr.io/openclaw-rocks/openclaw-operator:v0.26.2
 docker tag  ghcr.io/openclaw-rocks/openclaw-operator:v0.26.2 ${ECR}/openclaw-rocks/openclaw-operator:v0.26.2
 docker push ${ECR}/openclaw-rocks/openclaw-operator:v0.26.2
 
 # Sidecar 镜像
-docker pull nginx:1.27-alpine
+docker pull --platform linux/arm64 nginx:1.27-alpine
 docker tag  nginx:1.27-alpine ${ECR}/nginx:1.27-alpine
 docker push ${ECR}/nginx:1.27-alpine
 
-docker pull ghcr.io/astral-sh/uv:0.6-bookworm-slim
+docker pull --platform linux/arm64 ghcr.io/astral-sh/uv:0.6-bookworm-slim
 docker tag  ghcr.io/astral-sh/uv:0.6-bookworm-slim ${ECR}/astral-sh/uv:0.6-bookworm-slim
 docker push ${ECR}/astral-sh/uv:0.6-bookworm-slim
 
-docker pull otel/opentelemetry-collector:0.120.0
+docker pull --platform linux/arm64 otel/opentelemetry-collector:0.120.0
 docker tag  otel/opentelemetry-collector:0.120.0 ${ECR}/otel/opentelemetry-collector:0.120.0
 docker push ${ECR}/otel/opentelemetry-collector:0.120.0
 
 # ALB Controller 镜像
-docker pull public.ecr.aws/eks/aws-load-balancer-controller:v3.2.1
+docker pull --platform linux/arm64 public.ecr.aws/eks/aws-load-balancer-controller:v3.2.1
 docker tag  public.ecr.aws/eks/aws-load-balancer-controller:v3.2.1 ${ECR}/eks/aws-load-balancer-controller:v3.2.1
 docker push ${ECR}/eks/aws-load-balancer-controller:v3.2.1
 
@@ -279,8 +279,8 @@ echo "CF_STACK_NAME=openclaw-prod" >> .env
 
 ```bash
 kubectl get pods -n openclaw-platform
-kubectl port-forward -n openclaw-platform svc/platform-api 8000:8000
-curl http://localhost:8000/health
+kubectl port-forward -n openclaw-platform svc/platform-api 8890:8890
+curl http://localhost:8890/health
 # {"status":"ok","version":"0.9.53"}
 ```
 
@@ -554,7 +554,7 @@ kubectl set image deployment/platform-api \
 
 # 5. 验证
 kubectl get pods -n openclaw-platform
-curl http://localhost:8000/health
+curl http://localhost:8890/health
 # {"status":"ok","version":"0.9.54"}
 ```
 
