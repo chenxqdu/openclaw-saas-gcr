@@ -181,6 +181,19 @@ class LLMUpdateRequest(BaseModel):
     llm_api_keys: Optional[Dict[str, str]] = None
 
 
+class ModelPoolAddRequest(BaseModel):
+    """Add a model to an agent's pool"""
+
+    model_id: str = Field(..., min_length=1)
+    set_default: bool = False
+
+
+class ModelPoolSetDefaultRequest(BaseModel):
+    """Set the default model in an agent's pool"""
+
+    model_id: str = Field(..., min_length=1)
+
+
 class ChannelBindRequest(BaseModel):
     """Channel binding request schema"""
 

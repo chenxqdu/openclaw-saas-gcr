@@ -276,6 +276,7 @@ function TenantPage() {
   const [channelModal, setChannelModal] = useState(null)
   const [createModal, setCreateModal] = useState(false)
   const [logsModal, setLogsModal] = useState(null)
+  const [modelsModal, setModelsModal] = useState(null)
   const tenantName = window.location.pathname.split('/tenants/')[1]?.split('/')[0]
   const navigate = useNavigate()
   const isAdmin = api.isPlatformAdmin()
@@ -355,13 +356,14 @@ function TenantPage() {
               <span className="agent-name">{a.name}</span>
               <span className={`badge ${a.status === 'running' ? 'badge-green' : 'badge-orange'}`}>{a.status}</span>
               <span className="badge badge-blue">{a.llm_provider || 'openai-compatible'}</span>
-              {a.llm_model && <span style={{color:'var(--text-secondary)', fontSize:'11px'}}>{a.llm_model}</span>}
+              {a.llm_model && <span style={{color:'var(--text-secondary)', fontSize:'11px'}}>★ {a.llm_model}</span>}
               <div className="agent-channels">
                 {(a.channels || []).map(ch => <span key={ch} className="channel-chip">{ch}</span>)}
               </div>
             </div>
             <div style={{display:'flex', gap:'6px'}}>
               <button className="btn btn-sm" onClick={() => setLogsModal({agentId: a.id, agentName: a.name})}>📋 Logs</button>
+              {myRole && <button className="btn btn-sm" onClick={() => setModelsModal({agentId: a.id, agentName: a.name, llmProvider: a.llm_provider})}>🧠 Models</button>}
               {myRole && <button className="btn btn-sm" onClick={() => setChannelModal({agentId: a.id, agentName: a.name})}>+ Channel</button>}
               {myRole && <button className="btn btn-sm btn-danger" onClick={() => deleteAgent(a.id)}>Delete</button>}
             </div>
@@ -422,6 +424,16 @@ function TenantPage() {
           agentId={logsModal.agentId}
           agentName={logsModal.agentName}
           onClose={() => setLogsModal(null)}
+        />
+      )}
+
+      {modelsModal && (
+        <ModelsModal
+          tenantName={tenantName}
+          agentId={modelsModal.agentId}
+          agentName={modelsModal.agentName}
+          llmProvider={modelsModal.llmProvider}
+          onClose={() => { setModelsModal(null); reload() }}
         />
       )}
     </div>
@@ -560,7 +572,7 @@ function CreateAgentModal({ tenantName, onClose, onSuccess, onError }) {
             </select>
           </div>
 
-          {currentProvider && (
+          {currentProvider && provider !== 'openai-compatible' && (
             <div className="form-group">
               <label>Model</label>
               <select className="form-input" value={model} onChange={e => setModel(e.target.value)}>
@@ -750,6 +762,154 @@ function ChannelModal({ tenantName, agentId, agentName, onClose }) {
             <button type="submit" className="btn btn-primary">Bind Channel</button>
           </div>
         </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Models Modal ───
+function ModelsModal({ tenantName, agentId, agentName, llmProvider, onClose }) {
+  const [pool, setPool] = useState(null)
+  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [newModelId, setNewModelId] = useState('')
+  const [newSetDefault, setNewSetDefault] = useState(false)
+  const [customModelId, setCustomModelId] = useState('')
+
+  const isCustomProvider = llmProvider === 'openai-compatible'
+
+  const load = () => {
+    setError('')
+    api.getAgentModels(tenantName, agentId)
+      .then(p => {
+        setPool(p)
+        const firstAvailable = (p.available && p.available[0]?.id) || ''
+        setNewModelId(firstAvailable)
+      })
+      .catch(e => setError(e.message))
+  }
+  useEffect(() => { load() }, [])
+
+  const atCap = pool && pool.models.length >= pool.pool_cap
+  const canAdd = pool && !atCap && (isCustomProvider
+    ? customModelId.trim().length > 0
+    : !!newModelId)
+
+  const handleAdd = async (e) => {
+    e.preventDefault()
+    if (!canAdd || busy) return
+    setBusy(true); setError('')
+    try {
+      const id = isCustomProvider ? customModelId.trim() : newModelId
+      await api.addAgentModel(tenantName, agentId, id, newSetDefault)
+      setCustomModelId('')
+      setNewSetDefault(false)
+      load()
+    } catch (err) { setError(err.message) }
+    finally { setBusy(false) }
+  }
+
+  const handleSetDefault = async (modelId) => {
+    if (busy) return
+    setBusy(true); setError('')
+    try {
+      await api.setAgentModelDefault(tenantName, agentId, modelId)
+      load()
+    } catch (err) { setError(err.message) }
+    finally { setBusy(false) }
+  }
+
+  const handleRemove = async (modelId) => {
+    if (busy) return
+    if (!confirm(`Remove model "${modelId}" from the pool?`)) return
+    setBusy(true); setError('')
+    try {
+      await api.removeAgentModel(tenantName, agentId, modelId)
+      load()
+    } catch (err) { setError(err.message) }
+    finally { setBusy(false) }
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal" onClick={e => e.stopPropagation()} style={{maxWidth:'560px', maxHeight:'85vh', overflowY:'auto'}}>
+        <h2>🧠 Models — {agentName}</h2>
+        <div style={{marginBottom:'12px', fontSize:'13px', color:'var(--text-secondary)'}}>
+          Provider: <span className="badge badge-blue">{llmProvider}</span>
+          <span style={{marginLeft:'8px'}}>Pool {pool ? pool.models.length : '…'} / {pool?.pool_cap ?? 3}</span>
+        </div>
+        {error && <div className="alert alert-error">{error}</div>}
+
+        {!pool ? <p>Loading…</p> : (
+          <>
+            <div style={{border:'1px solid var(--border)', borderRadius:'8px', marginBottom:'12px'}}>
+              {pool.models.length === 0 ? (
+                <p style={{padding:'12px', color:'var(--text-secondary)'}}>No models in pool.</p>
+              ) : pool.models.map(m => (
+                <div key={m.id} style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 12px', borderBottom:'1px solid var(--border)'}}>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontWeight: m.is_default ? 600 : 400}}>
+                      {m.is_default ? '★ ' : ''}{m.name}
+                    </div>
+                    <div style={{fontSize:'11px', color:'var(--text-secondary)', wordBreak:'break-all'}}>{m.id}</div>
+                  </div>
+                  <div style={{display:'flex', gap:'6px', flexShrink:0}}>
+                    {!m.is_default && (
+                      <button className="btn btn-sm" disabled={busy} onClick={() => handleSetDefault(m.id)}>Set default</button>
+                    )}
+                    <button
+                      className="btn btn-sm btn-danger"
+                      disabled={busy || m.is_default || pool.models.length <= 1}
+                      onClick={() => handleRemove(m.id)}
+                    >Remove</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {atCap ? (
+              <p style={{fontSize:'12px', color:'var(--text-secondary)'}}>
+                Pool is at capacity ({pool.pool_cap}). Remove a model to add another.
+              </p>
+            ) : (
+              <form onSubmit={handleAdd} style={{background:'var(--bg-secondary)', padding:'12px', borderRadius:'8px'}}>
+                <div style={{fontSize:'13px', fontWeight:600, marginBottom:'8px'}}>Add model</div>
+                {isCustomProvider ? (
+                  <div className="form-group" style={{marginBottom:'8px'}}>
+                    <label style={{fontSize:'12px'}}>Model ID</label>
+                    <input className="form-input" placeholder="e.g. deepseek-chat, qwen-plus"
+                      value={customModelId} onChange={e => setCustomModelId(e.target.value)} />
+                    <p style={{fontSize:'11px', color:'var(--text-secondary)', marginTop:'4px'}}>
+                      All pool models share the same endpoint and API key from agent creation.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="form-group" style={{marginBottom:'8px'}}>
+                    <label style={{fontSize:'12px'}}>Model</label>
+                    <select className="form-input" value={newModelId} onChange={e => setNewModelId(e.target.value)}>
+                      {(pool.available || []).length === 0 ? (
+                        <option value="">No models left in catalog</option>
+                      ) : pool.available.map(m => (
+                        <option key={m.id} value={m.id}>{m.name} ({m.id})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <label style={{display:'flex', alignItems:'center', gap:'8px', fontSize:'12px', marginBottom:'8px'}}>
+                  <input type="checkbox" checked={newSetDefault} onChange={e => setNewSetDefault(e.target.checked)} />
+                  <span>Set as default after adding</span>
+                </label>
+                <button type="submit" className="btn btn-primary btn-sm" disabled={!canAdd || busy}>
+                  {busy ? 'Working…' : 'Add to pool'}
+                </button>
+              </form>
+            )}
+          </>
+        )}
+
+        <div className="modal-actions">
+          <button type="button" className="btn" onClick={onClose}>Close</button>
+        </div>
       </div>
     </div>
   )

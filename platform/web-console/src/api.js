@@ -121,6 +121,29 @@ class ApiClient {
     })
   }
 
+  // Model pool (uncached — mutations must see fresh state)
+  getAgentModels(tenant, agentId) {
+    return this.request(`/api/v1/tenants/${tenant}/agents/${agentId}/models`)
+  }
+  addAgentModel(tenant, agentId, modelId, setDefault = false) {
+    return this.request(`/api/v1/tenants/${tenant}/agents/${agentId}/models`, {
+      method: 'POST',
+      body: JSON.stringify({ model_id: modelId, set_default: setDefault }),
+    })
+  }
+  setAgentModelDefault(tenant, agentId, modelId) {
+    return this.request(`/api/v1/tenants/${tenant}/agents/${agentId}/models/default`, {
+      method: 'PUT',
+      body: JSON.stringify({ model_id: modelId }),
+    })
+  }
+  removeAgentModel(tenant, agentId, modelId) {
+    return this.request(
+      `/api/v1/tenants/${tenant}/agents/${agentId}/models/${encodeURIComponent(modelId)}`,
+      { method: 'DELETE' }
+    )
+  }
+
   // Channels (cached — rarely changes)
   getAvailableChannels() { return cachedRequest('channels', () => this.request('/api/v1/channels')) }
   bindChannel(tenant, agentId, channelType, credentials) {

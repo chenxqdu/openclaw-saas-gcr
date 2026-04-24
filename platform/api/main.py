@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from api.database import init_db, seed_admin
-from api.routers import agents, auth, billing, channels, dashboard, tenants, usage
+from api.routers import agents, auth, billing, channels, dashboard, models, tenants, usage
 from api.services.k8s_client import k8s_client
 
 _version_file = pathlib.Path(__file__).parent.parent / "VERSION"
@@ -51,6 +51,7 @@ app.include_router(dashboard.router)
 app.include_router(tenants.router)
 app.include_router(agents.router)
 app.include_router(channels.router)
+app.include_router(models.router)
 app.include_router(usage.router)
 app.include_router(billing.router)
 

@@ -260,6 +260,12 @@ class K8sClient:
                     "model": {
                         "primary": model_prefix,
                     },
+                    # Seed pool map with the creation model so it appears as
+                    # default in the Models UI and survives later add/remove
+                    # merge-patches (empty {} means "in pool, no overrides").
+                    "models": {
+                        model_prefix: {},
+                    },
                 },
             },
         }
@@ -284,7 +290,10 @@ class K8sClient:
                     }
                 }
             }
-            raw_config["agents"]["defaults"]["model"]["primary"] = f"custom/{model_id}"
+            custom_ref = f"custom/{model_id}"
+            raw_config["agents"]["defaults"]["model"]["primary"] = custom_ref
+            # Keep pool map aligned with the resolved custom ref.
+            raw_config["agents"]["defaults"]["models"] = {custom_ref: {}}
 
         # Bedrock API Key: override region in baseUrl from user-supplied AWS_DEFAULT_REGION
         if llm_provider == "bedrock-apikey" and llm_api_keys:
@@ -335,7 +344,14 @@ class K8sClient:
         }
 
         # Enable wecom plugin (official WeCom channel by Tencent)
-        raw_config["plugins"]["allow"] = raw_config["plugins"].get("allow", []) 
+        # plugins.load.paths tells OpenClaw where to discover npm-installed plugins
+        # (operator init-plugins runs `npm install` into ~/.openclaw/node_modules/)
+        raw_config["plugins"]["load"] = raw_config["plugins"].get("load", {})
+        raw_config["plugins"]["load"]["paths"] = raw_config["plugins"]["load"].get("paths", [])
+        wecom_plugin_path = "/home/openclaw/.openclaw/node_modules/@wecom/wecom-openclaw-plugin"
+        if wecom_plugin_path not in raw_config["plugins"]["load"]["paths"]:
+            raw_config["plugins"]["load"]["paths"].append(wecom_plugin_path)
+        raw_config["plugins"]["allow"] = raw_config["plugins"].get("allow", [])
         if "wecom-openclaw-plugin" not in raw_config["plugins"]["allow"]:
             raw_config["plugins"]["allow"].append("wecom-openclaw-plugin")
         raw_config["plugins"]["entries"]["wecom-openclaw-plugin"] = {
