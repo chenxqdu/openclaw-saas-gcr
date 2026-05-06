@@ -30,7 +30,9 @@ DEFAULT_AGENT_IMAGE_TAG="${DEFAULT_AGENT_IMAGE_TAG:-2026.4.14}"
 
 PLATFORM_IMAGE="${PLATFORM_IMAGE:-${ECR_REGISTRY}/${PLATFORM_REPO}:${PLATFORM_TAG}}"
 BILLING_IMAGE="${BILLING_IMAGE:-${ECR_REGISTRY}/${BILLING_REPO}:${BILLING_TAG}}"
-PLATFORM_REPLICAS="${PLATFORM_REPLICAS:-2}"
+# 1 on first deploy so init_db()'s CREATE TABLE does not race between replicas.
+# Scale up afterwards: kubectl -n openclaw-platform scale deploy/platform-api --replicas=2
+PLATFORM_REPLICAS="${PLATFORM_REPLICAS:-1}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "============================================"

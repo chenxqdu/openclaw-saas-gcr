@@ -106,9 +106,11 @@ kubectl get crd openclawinstances.openclaw.rocks openclawselfconfigs.openclaw.ro
 echo ""
 echo ">>> [5/5] Deploying OpenClaw Operator..."
 kubectl create namespace openclaw-operator-system 2>/dev/null || true
+# -n required: rendered yaml has no metadata.namespace on namespaced kinds,
+# so kubectl would default to "default" without this flag.
 cat "$SCRIPT_DIR/../yaml/openclaw-operator.yaml" | \
   sed "s|\${ECR_REGISTRY}|$ECR_REGISTRY|g" | \
-  kubectl apply --server-side --force-conflicts -f -
+  kubectl apply --server-side --force-conflicts -n openclaw-operator-system -f -
 
 echo ""
 echo ">>> Waiting for operator to be ready..."
