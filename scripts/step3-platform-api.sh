@@ -12,15 +12,34 @@ REGION="${REGION:-cn-northwest-1}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-openclaw-saas-admin@example.com}"
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-OpenClaw2026!}"
 
-# All images from public.ecr.aws (accessible from CN)
-PLATFORM_IMAGE="${PLATFORM_IMAGE:-public.ecr.aws/i4x4j7g8/openclaw-saas/platform:v0.9.23-workshop}"
-BILLING_IMAGE="${BILLING_IMAGE:-public.ecr.aws/i4x4j7g8/openclaw-saas/billing-consumer:v0.1.0}"
+# Image registry used for all platform/operator/agent/sidecar images.
+# Override via env var to switch to a private mirror. Platform writes this
+# value to both CR spec.registry (operator rewrites upstream paths) and to
+# its own sidecar image refs (metrics-exporter, custom agent).
+ECR_REGISTRY="${ECR_REGISTRY:-public.ecr.aws/i4x4j7g8/openclaw-saas}"
+
+# Per-component image defaults (override each via env var if needed).
+PLATFORM_REPO="${PLATFORM_REPO:-openclaw-saas-platform}"
+PLATFORM_TAG="${PLATFORM_TAG:-v0.9.61}"
+BILLING_REPO="${BILLING_REPO:-openclaw-saas-billing-consumer}"
+BILLING_TAG="${BILLING_TAG:-v0.1.1}"
+METRICS_EXPORTER_REPO="${METRICS_EXPORTER_REPO:-openclaw-saas-metrics-exporter}"
+METRICS_EXPORTER_TAG="${METRICS_EXPORTER_TAG:-v0.3.1}"
+DEFAULT_AGENT_IMAGE="${DEFAULT_AGENT_IMAGE:-openclaw-custom}"
+DEFAULT_AGENT_IMAGE_TAG="${DEFAULT_AGENT_IMAGE_TAG:-2026.4.14}"
+
+PLATFORM_IMAGE="${PLATFORM_IMAGE:-${ECR_REGISTRY}/${PLATFORM_REPO}:${PLATFORM_TAG}}"
+BILLING_IMAGE="${BILLING_IMAGE:-${ECR_REGISTRY}/${BILLING_REPO}:${BILLING_TAG}}"
 PLATFORM_REPLICAS="${PLATFORM_REPLICAS:-2}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "============================================"
 echo "  OpenClaw Workshop - Step 3: Platform API"
 echo "  Stack: $STACK_NAME | Region: $REGION"
+echo "  Registry: $ECR_REGISTRY"
+echo "  Platform: $PLATFORM_IMAGE"
+echo "  Billing:  $BILLING_IMAGE"
+echo "  Agent:    $ECR_REGISTRY/$DEFAULT_AGENT_IMAGE:$DEFAULT_AGENT_IMAGE_TAG"
 echo "============================================"
 
 # Get outputs from Step 1
@@ -153,9 +172,12 @@ kubectl create secret generic platform-config \
   --from-literal="AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" \
   --from-literal="AWS_PARTITION=aws-cn" \
   --from-literal="AWS_REGION=$REGION" \
-  --from-literal="ECR_REGISTRY=public.ecr.aws/i4x4j7g8/openclaw-saas" \
+  --from-literal="ECR_REGISTRY=$ECR_REGISTRY" \
   --from-literal="JWT_SECRET=$JWT_SECRET" \
-  --from-literal="METRICS_EXPORTER_TAG=v0.1.0" \
+  --from-literal="METRICS_EXPORTER_REPO=$METRICS_EXPORTER_REPO" \
+  --from-literal="METRICS_EXPORTER_TAG=$METRICS_EXPORTER_TAG" \
+  --from-literal="DEFAULT_AGENT_IMAGE=$DEFAULT_AGENT_IMAGE" \
+  --from-literal="DEFAULT_AGENT_IMAGE_TAG=$DEFAULT_AGENT_IMAGE_TAG" \
   --from-literal="SQS_QUEUE_URL=$SQS_QUEUE_URL" \
   --dry-run=client -o yaml | kubectl apply -f -
 

@@ -1,19 +1,16 @@
-# OpenClaw Custom Image with Kiro CLI + Tavily Search
-# Base: official OpenClaw image (Debian bookworm, Node 24, Python 3.11)
-# Target: linux/arm64 (Graviton)
+# OpenClaw Custom Image (workshop)
+# Pre-installs tools that cannot be fetched via npx at runtime (China firewall).
+# Base: mirror of openclaw upstream (user=node uid 1000, HOME=/home/node).
+# Target: linux/arm64 (Graviton).
 #
-# Runtime filesystem constraints (operator sets readOnlyRootFilesystem=true):
-#   ❌ /home/openclaw/          — image layer, read-only (HOME dir)
-#   ✅ /home/openclaw/.openclaw/ — PVC mount, writable (data root)
-#   ✅ /home/openclaw/.cache/   — PVC subPath, writable
-#   ✅ /home/openclaw/.local/   — PVC subPath, writable
-#   ❌ /app/                    — image layer, read-only
-#   ✅ /tmp/                    — emptyDir, writable
-#
-# This Dockerfile bakes tools + configs into the image layer.
-# Files that need to land on the PVC (skills, playbook) are staged at
-# /opt/openclaw-custom/ and copied by an init container at pod startup.
-FROM ghcr.io/openclaw/openclaw:2026.3.23-2
+# Build:
+#   docker buildx build --platform linux/arm64 \
+#     --build-arg BASE_REGISTRY=public.ecr.aws/i4x4j7g8/openclaw-saas \
+#     --build-arg BASE_TAG=2026.4.14 \
+#     -t <registry>/openclaw-custom:2026.4.14 --push .
+ARG BASE_REGISTRY=public.ecr.aws/i4x4j7g8/openclaw-saas
+ARG BASE_TAG=2026.4.14
+FROM ${BASE_REGISTRY}/openclaw/openclaw:${BASE_TAG}
 
 USER root
 
@@ -21,65 +18,51 @@ USER root
 RUN apt-get update && apt-get install -y --no-install-recommends jq \
     && rm -rf /var/lib/apt/lists/*
 
-# ── Kiro CLI (native binary, headless, aarch64) ──
-ARG KIRO_VERSION=1.28.0
-RUN set -e \
-    && curl -fsSL "https://desktop-release.q.us-east-1.amazonaws.com/${KIRO_VERSION}/kirocli-aarch64-linux.tar.gz" \
-       -o /tmp/kirocli.tar.gz \
-    && tar xzf /tmp/kirocli.tar.gz -C /tmp \
-    && cp /tmp/kirocli/bin/kiro-cli /usr/local/bin/kiro-cli \
-    && cp /tmp/kirocli/bin/kiro-cli-chat /usr/local/bin/kiro-cli-chat \
-    && chmod +x /usr/local/bin/kiro-cli /usr/local/bin/kiro-cli-chat \
-    && rm -rf /tmp/kirocli /tmp/kirocli.tar.gz \
-    && kiro-cli --version
-
-# ── acpx: pre-install into extension dir ──
-# Base image ships /app/extensions/acpx/ with package.json but no node_modules.
-# Runtime npm-install fails on readOnlyRootFilesystem (EROFS).
-# Extract ACPX_PINNED_VERSION from config.ts and install that exact version
-# so the runtime version check passes without triggering a re-install.
+# ── Pre-install acpx into extension dir ──
+# Base image has /app/extensions/acpx/package.json but no node_modules.
+# Strip workspace:* devDependencies so npm install won't fail on unresolved workspace refs,
+# then install the pinned acpx version declared in dependencies.
 RUN cd /app/extensions/acpx \
-    && PINNED=$(grep 'ACPX_PINNED_VERSION' src/config.ts | grep -o '"[^"]*"' | head -1 | tr -d '"') \
-    && echo "Installing acpx@${PINNED} (from ACPX_PINNED_VERSION)" \
+    && PINNED=$(node -e "console.log(JSON.parse(require('fs').readFileSync('package.json','utf8')).dependencies.acpx)") \
+    && echo "Installing acpx@${PINNED}" \
+    && node -e "const p=JSON.parse(require('fs').readFileSync('package.json','utf8')); delete p.devDependencies; require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))" \
     && npm install --omit=dev --no-save "acpx@${PINNED}" 2>&1 \
     && /app/extensions/acpx/node_modules/.bin/acpx --version
 
-# ── Make acpx available globally via PATH ──
-# Sub-agents use `exec acpx ...` from workspace dir; need acpx on PATH.
-ENV PATH="/app/extensions/acpx/node_modules/.bin:${PATH}"
+# ── Pre-install ACP agent binary (CN cannot use npx to download at runtime) ──
+RUN npm install -g @zed-industries/claude-agent-acp@0.21.0
 
-# ── Kiro config (image layer, read-only but readable at runtime) ──
-# Note: /home/openclaw/.kiro/ is read-only at runtime. The kiro-cli ACP mode
-# needs to write to ~/.kiro/sessions/. The init container copies this config
-# to the PVC at /home/openclaw/.openclaw/.kiro/ which IS writable.
-# A wrapper script redirects HOME so kiro-cli uses the PVC copy.
-RUN mkdir -p /opt/openclaw-custom/.kiro/agents /opt/openclaw-custom/.kiro/settings
-COPY kiro-agent-config.json /opt/openclaw-custom/.kiro/agents/kiro_default.json
-RUN echo '{"chat.defaultAgent": "kiro_default"}' > /opt/openclaw-custom/.kiro/settings/cli.json \
-    && chown -R 1000:1000 /opt/openclaw-custom/.kiro
+# ── Kiro CLI (native binary, headless, aarch64) ──
+ARG KIRO_VERSION=1.28.0
+RUN curl -fsSL "https://desktop-release.q.us-east-1.amazonaws.com/${KIRO_VERSION}/kirocli-aarch64-linux.tar.gz" \
+    | tar xz -C /tmp \
+    && cp /tmp/kirocli/bin/kiro-cli /usr/local/bin/ \
+    && cp /tmp/kirocli/bin/kiro-cli-chat /usr/local/bin/ \
+    && chmod +x /usr/local/bin/kiro-cli /usr/local/bin/kiro-cli-chat \
+    && rm -rf /tmp/kirocli
 
-# ── acpx symlink: ~/.acpx → ~/.openclaw/.acpx (PVC, writable) ──
-RUN mkdir -p /home/openclaw \
-    && ln -sf /home/openclaw/.openclaw/.acpx /home/openclaw/.acpx \
-    && chown -h 1000:1000 /home/openclaw/.acpx
-
-# ── Staging area for PVC content (copied by init container) ──
-RUN mkdir -p /opt/openclaw-custom/skills
-COPY skills/search /opt/openclaw-custom/skills/search
-COPY KIRO-PLAYBOOK.md /opt/openclaw-custom/KIRO-PLAYBOOK.md
-COPY kiro-wrapper.sh /opt/openclaw-custom/.kiro-wrapper.sh
-RUN chmod +x /opt/openclaw-custom/skills/search/scripts/search.sh \
-    && chmod +x /opt/openclaw-custom/.kiro-wrapper.sh \
-    && chown -R 1000:1000 /opt/openclaw-custom
+# ── Kiro agent config ──
+# Two copies:
+#   1. /home/node/.kiro/ — image layer, used in non-persistent fallback mode
+#   2. /opt/kiro-config/ — image layer, source for persistent mode
+#
+# For persistent kiro sessions, the .acpxrc.json agent command sets
+# HOME=~/.openclaw (PVC) and copies config from /opt/kiro-config/ on first run.
+RUN mkdir -p /home/node/.kiro/agents /home/node/.kiro/settings \
+    && mkdir -p /opt/kiro-config/agents /opt/kiro-config/settings
+COPY kiro-agent-config.json /home/node/.kiro/agents/kiro_default.json
+COPY kiro-agent-config.json /opt/kiro-config/agents/kiro_default.json
+RUN echo '{"chat.defaultAgent":"kiro_default"}' \
+    | tee /home/node/.kiro/settings/cli.json > /opt/kiro-config/settings/cli.json \
+    && chown -R 1000:1000 /home/node/.kiro /opt/kiro-config
 
 USER node
 
 # ── Verify ──
 RUN kiro-cli --version && jq --version \
-    && /app/extensions/acpx/node_modules/.bin/acpx --version \
-    && ls /opt/openclaw-custom/skills/search/SKILL.md \
-    && ls /opt/openclaw-custom/KIRO-PLAYBOOK.md
+    && claude-agent-acp --version \
+    && /app/extensions/acpx/node_modules/.bin/acpx --version
 
 LABEL org.opencontainers.image.title="openclaw-custom" \
-      org.opencontainers.image.description="OpenClaw with Kiro CLI + Tavily Search" \
+      org.opencontainers.image.description="OpenClaw with pre-installed acpx + claude-agent-acp + kiro-cli" \
       org.opencontainers.image.source="https://github.com/chenxqdu/openclaw-saas-gcr"
