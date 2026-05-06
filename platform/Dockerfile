@@ -1,3 +1,12 @@
+# Stage 1: Build web console
+FROM node:22-slim AS frontend
+WORKDIR /build
+COPY web-console/package.json web-console/package-lock.json ./
+RUN npm ci
+COPY web-console/ ./
+RUN npm run build
+
+# Stage 2: Python runtime
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -5,9 +14,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY VERSION .
 COPY api/ ./api/
 COPY billing/ ./billing/
-COPY web-console/dist/ ./web-console/dist/
+COPY --from=frontend /build/dist/ ./web-console/dist/
 
 EXPOSE 8000
 

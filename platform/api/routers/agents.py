@@ -71,6 +71,14 @@ async def create_agent(
     provider_def = LLM_PROVIDERS[agent_data.llm_provider]
     model = agent_data.llm_model or provider_def["default_model"]
 
+    # openai-compatible: the catalog entry is a "custom-model" placeholder.
+    # The real id lives in llm_api_keys.CUSTOM_MODEL_ID (CR primary uses it).
+    # Mirror that into the DB llm_model so the UI shows the actual name.
+    if agent_data.llm_provider == "openai-compatible":
+        custom_id = (agent_data.llm_api_keys or {}).get("CUSTOM_MODEL_ID")
+        if custom_id:
+            model = custom_id
+
     agent = Agent(
         name=agent_data.name,
         tenant_id=tenant.id,

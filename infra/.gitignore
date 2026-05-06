@@ -6,3 +6,5 @@ cdk.context.json
 *.egg-info/
 .cache/
 node_modules/
+
+.env

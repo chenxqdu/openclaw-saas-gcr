@@ -47,6 +47,14 @@ async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    # Also create billing tables (separate Base)
+    try:
+        from billing.models import Base as BillingBase
+        async with engine.begin() as conn:
+            await conn.run_sync(BillingBase.metadata.create_all)
+    except Exception:
+        pass  # billing module may not be available in all deployments
+
 
 async def seed_admin():
     """Seed platform admin account from env vars if configured"""

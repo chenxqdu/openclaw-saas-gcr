@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing-consumer
+  namespace: openclaw-platform
+  labels:
+    app: billing-consumer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: billing-consumer
+  template:
+    metadata:
+      labels:
+        app: billing-consumer
+    spec:
+      containers:
+        - name: consumer
+          image: ${BILLING_IMAGE}
+          env:
+            - name: PYTHONUNBUFFERED
+              value: "1"
+            - name: AWS_DEFAULT_REGION
+              value: "${AWS_REGION}"
+          envFrom:
+            - secretRef:
+                name: platform-api-config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi

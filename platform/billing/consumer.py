@@ -17,7 +17,7 @@ class Config:
     """Configuration from environment variables."""
 
     SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL", "")
-    AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "cn-northwest-1")
+    AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", os.getenv("AWS_REGION", ""))
     DATABASE_URL = os.getenv("DATABASE_URL", "")
     POLL_WAIT_TIME = int(os.getenv("POLL_WAIT_TIME", "20"))  # Long polling
     MAX_MESSAGES = int(os.getenv("MAX_MESSAGES", "10"))

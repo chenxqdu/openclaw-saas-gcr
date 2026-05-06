@@ -1,4 +1,5 @@
 """OpenClaw SaaS Management API"""
+import pathlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -8,8 +9,11 @@ from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 
 from api.database import init_db, seed_admin
-from api.routers import agents, auth, billing, channels, dashboard, tenants, usage
+from api.routers import agents, auth, billing, channels, dashboard, models, tenants, usage
 from api.services.k8s_client import k8s_client
+
+_version_file = pathlib.Path(__file__).parent.parent / "VERSION"
+__version__ = _version_file.read_text().strip() if _version_file.exists() else "0.0.0"
 
 
 @asynccontextmanager
@@ -24,7 +28,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="OpenClaw SaaS Management API",
-    version="0.2.0",
+    version=__version__,
     description="Control plane for OpenClaw on EKS SaaS platform",
     lifespan=lifespan,
 )
@@ -47,6 +51,7 @@ app.include_router(dashboard.router)
 app.include_router(tenants.router)
 app.include_router(agents.router)
 app.include_router(channels.router)
+app.include_router(models.router)
 app.include_router(usage.router)
 app.include_router(billing.router)
 
@@ -76,14 +81,14 @@ if CONSOLE_DIR.exists():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": __version__}
 
 
 @app.get("/")
 async def root():
     return {
         "service": "OpenClaw SaaS Management API",
-        "version": "0.2.0",
+        "version": __version__,
         "docs": "/docs",
         "health": "/health",
     }

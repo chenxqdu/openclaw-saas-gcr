@@ -1,461 +1,211 @@
-# OpenClaw SaaS Infrastructure
+# OpenClaw SaaS Infrastructure — China Region
 
-Fully parameterized AWS CDK infrastructure and Kubernetes manifests for the OpenClaw SaaS platform on EKS.
+AWS CDK stacks + Kubernetes manifests + 部署自动化脚本，部署 OpenClaw SaaS 到 EKS (cn-northwest-1)。
 
-## Features
+## 目录结构
 
-- **Fully Parameterized**: Deploy to any AWS account/region with just configuration changes
-- **Production-Ready**: RDS PostgreSQL, SQS, ECR, S3, ALB Ingress, IRSA
-- **Cost-Optimized**: Graviton nodes, single NAT gateway, VPC endpoints
-- **Secure**: Private subnets, encrypted storage, Secrets Manager, security groups
-- **Automated**: Single script deployment from infrastructure to application
+| 目录 | 说明 |
+|------|------|
+| `cdk/` | CDK stacks: VPC, EKS, EFS, RDS, S3, SQS, IAM, Karpenter |
+| `k8s/platform/` | Kubernetes manifests (deployment, service, rbac, ingress) |
+| `k8s-platform/` | 平台级 K8s 资源 (billing-consumer, ingress, karpenter, operator, storage) |
+| `scripts/deploy.sh` | 自动化部署脚本 |
+| `observability/` | Prometheus + Grafana 配置 |
+| `docs/` | 架构图、Runbook |
+| `.env.cn` | 中国区环境变量模板 |
 
-## Components
+## 配置
 
-| Directory | Description |
-|-----------|-------------|
-| `cdk/` | AWS CDK stacks (VPC, EKS, RDS, S3, DNS/ACM, SQS, ECR, IAM) |
-| `k8s/platform/` | Parameterized Kubernetes manifests for platform API |
-| `scripts/` | Automated deployment scripts |
-| `observability/` | Prometheus, Grafana, Loki |
-| `cicd/` | GitHub Actions workflows |
-| `docs/` | Runbook, disaster recovery |
+### `.env` — 配置中心
 
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                        AWS Cloud                             │
-│  ┌───────────────────────────────────────────────────────┐  │
-│  │ VPC (2 AZs)                                          │  │
-│  │  ┌──────────────┐          ┌──────────────┐          │  │
-│  │  │ Public Subnet│          │ Public Subnet│          │  │
-│  │  │   NAT GW     │          │              │          │  │
-│  │  └──────┬───────┘          └──────────────┘          │  │
-│  │         │                                             │  │
-│  │  ┌──────┴───────┐          ┌──────────────┐          │  │
-│  │  │Private Subnet│          │Private Subnet│          │  │
-│  │  │              │          │              │          │  │
-│  │  │ ┌──────────┐ │          │ ┌──────────┐ │          │  │
-│  │  │ │ EKS Nodes│ │          │ │ EKS Nodes│ │          │  │
-│  │  │ │  t4g.*   │ │          │ │  t4g.*   │ │          │  │
-│  │  │ └──────────┘ │          │ └──────────┘ │          │  │
-│  │  │              │          │              │          │  │
-│  │  │ ┌──────────┐ │          │ ┌──────────┐ │          │  │
-│  │  │ │    RDS   │ │          │ │RDS Replica│ │          │  │
-│  │  │ │PostgreSQL│ │          │ │ (optional)│ │          │  │
-│  │  │ └──────────┘ │          │ └──────────┘ │          │  │
-│  │  └──────────────┘          └──────────────┘          │  │
-│  │                                                        │  │
-│  │  VPC Endpoints: S3, ECR, STS                          │  │
-│  └────────────────────────────────────────────────────────┘  │
-│                                                               │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐          │
-│  │     ECR     │  │     SQS     │  │     S3      │          │
-│  │ (3 repos)   │  │ (usage evt) │  │  (backups)  │          │
-│  └─────────────┘  └─────────────┘  └─────────────┘          │
-│                                                               │
-│  ┌─────────────┐  ┌─────────────┐                           │
-│  │     ACM     │  │  Route53    │                           │
-│  │   (cert)    │  │   (DNS)     │                           │
-│  └─────────────┘  └─────────────┘                           │
-└───────────────────────────────────────────────────────────────┘
-
-                          ↓ ALB Ingress ↓
-
-                     Internet Users
-```
-
-## Quick Start
-
-### Prerequisites
-
-Install the following tools:
+所有部署配置集中在 `.env`，`deploy.sh` 自动加载。
 
 ```bash
-# AWS CLI
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip && sudo ./aws/install
-
-# CDK CLI
-npm install -g aws-cdk
-
-# kubectl
-curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
-
-# helm
-curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-
-# jq
-sudo apt-get install jq  # Ubuntu/Debian
-# or: brew install jq    # macOS
+cp .env.cn .env
+vim .env    # 填写 ADMIN_PASSWORD, JWT_SECRET, AWS_ACCOUNT_ID
 ```
 
-Configure AWS credentials:
+详细变量说明见根目录 [README.md](../README.md#env--配置中心)。
+
+### `cdk.json` — 基础设施参数
+
+实例类型、集群规模、VPC CIDR 等在 `cdk/cdk.json` context 中配置。
+
+关键参数：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `cluster_name` | `openclaw-prod` | EKS 集群名 |
+| `eks_version` | `1.31` | Kubernetes 版本 |
+| `eks_node_instance_type` | `m6g.xlarge` | 节点实例类型 (Graviton) |
+| `eks_node_min/max/desired` | 2/4/2 | 节点组伸缩配置 |
+| `vpc_cidr` | `172.31.0.0/16` | VPC CIDR |
+| `vpc_max_azs` | 3 | 可用区数量 |
+| `db_instance_class` | `db.t4g.medium` | RDS 实例类型 |
+
+## 部署
+
+### 前置条件
+
+- AWS CLI 已配置 (`~/.aws/config`)
+- CDK CLI, kubectl, helm, jq, Docker with buildx
+- IAM 身份具备 Admin 或足够权限
+
+### 完整部署
 
 ```bash
-aws configure
-# AWS Access Key ID: YOUR_KEY
-# AWS Secret Access Key: YOUR_SECRET
-# Default region name: us-west-2
-# Default output format: json
-```
+export AWS_PROFILE=default
+export AWS_DEFAULT_REGION=cn-northwest-1
 
-### Option 1: Automated Deployment (Recommended)
+# 1. 配置
+cd infra && cp .env.cn .env && vim .env
 
-The easiest way to deploy is using the automated script:
+# 2. CDK 部署
+cd cdk && python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+cdk bootstrap aws://${AWS_ACCOUNT_ID}/${AWS_DEFAULT_REGION}
 
-```bash
-# 1. Install Python dependencies
-cd cdk
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+cdk deploy openclaw-saas-vpc --require-approval never
+cdk deploy openclaw-saas-karpenter-node openclaw-saas-sqs openclaw-saas-s3 --require-approval never --concurrency 3
+cdk deploy openclaw-saas-eks --require-approval never                    # ~15 min
+cdk deploy openclaw-saas-efs --require-approval never
+cdk deploy openclaw-saas-iam openclaw-saas-rds --require-approval never --concurrency 2
 cd ..
 
-# 2. Configure deployment (edit cdk/cdk.json)
-# See Configuration Reference below
+# 3. 构建 & 推送镜像（见根目录 README）
 
-# 3. Run deployment script
-./scripts/deploy.sh
+# 4. 部署 K8s 组件 + 平台
+./scripts/deploy.sh --skip-cdk
 ```
 
-This script will:
-- Deploy all CDK stacks
-- Configure kubectl
-- Install ALB controller and openclaw-operator
-- Deploy platform API
-- Run database migrations
-- Verify deployment
+> **EC2 IAM Role 用户注意：** 如果在 EC2 上手动执行 `cdk deploy`（而非通过 `deploy.sh`），需要额外传入 role ARN：
+> ```bash
+> cdk deploy openclaw-saas-eks -c deployer_role_arn=arn:aws-cn:iam::123456789012:role/MyEC2Role
+> ```
+> 如果改用 `./scripts/deploy.sh`（不带 `--skip-cdk`）来部署，脚本会自动检测当前 IAM Role 并传入，无需手动指定。
 
-### Option 2: Manual Deployment
+### 仅更新平台
 
 ```bash
-# 1. Install Python dependencies
-cd cdk
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-
-# 2. Bootstrap CDK (first time only)
-export CDK_DEFAULT_ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
-export CDK_DEFAULT_REGION=us-west-2
-cdk bootstrap
-
-# 3. Deploy CDK stacks
-cdk deploy --all --require-approval never
-
-# 4. Configure kubectl
-CLUSTER_NAME=$(aws cloudformation describe-stacks \
-  --stack-name openclaw-saas-dev-eks \
-  --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue" \
-  --output text)
-aws eks update-kubeconfig --name ${CLUSTER_NAME} --region ${CDK_DEFAULT_REGION}
-
-# 5. Install ALB controller
-helm repo add eks https://aws.github.io/eks-charts
-helm repo update
-helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-  -n kube-system \
-  --set clusterName=${CLUSTER_NAME} \
-  --set serviceAccount.create=true
-
-# 6. Install openclaw-operator
-helm install openclaw-operator \
-  oci://ghcr.io/openclaw-rocks/charts/openclaw-operator \
-  --namespace openclaw-operator-system \
-  --set leaderElection.enabled=true \
-  --set crds.install=true
-
-# 7. Deploy platform API
-cd ../k8s/platform
-export PLATFORM_IMAGE="<your-ecr-repo>/openclaw-saas-platform:latest"
-export ACM_CERT_ARN="<your-cert-arn>"
-export DOMAIN_NAME="<your-domain>"
-./apply.sh
+./scripts/deploy.sh --skip-cdk
 ```
-
-## Configuration Reference
-
-All configuration is managed in `cdk/cdk.json`. Edit the `context` section:
-
-### Core Configuration
-
-```json
-{
-  "project_name": "openclaw-saas",    // Project identifier
-  "environment": "dev",                // Environment: dev/staging/prod
-}
-```
-
-### Domain and SSL (Optional)
-
-```json
-{
-  "domain_name": "openclaw.example.com",           // Custom domain (leave empty to skip)
-  "hosted_zone_id": "Z1234567890ABC",              // Route53 hosted zone ID
-  "hosted_zone_name": "example.com",               // Route53 zone name
-  "acm_cert_arn": "arn:aws:acm:...:certificate/..." // Existing cert ARN (or leave empty to create)
-}
-```
-
-**Note**: If `domain_name` is empty, the platform will use the ALB's default DNS name.
-
-### Database Configuration
-
-```json
-{
-  "db_instance_class": "db.t4g.micro",  // RDS instance type
-  "db_name": "openclawsaas",             // Database name
-  "db_allocated_storage": 20,            // Initial storage (GB)
-  "db_max_allocated_storage": 100        // Max autoscaling storage (GB)
-}
-```
-
-### EKS Configuration
-
-```json
-{
-  "eks_node_instance_type": "t4g.medium", // Node instance type (ARM64)
-  "eks_node_min": 2,                      // Min nodes
-  "eks_node_max": 5,                      // Max nodes
-  "eks_node_desired": 2,                  // Desired nodes
-  "eks_node_disk_size": 50,               // Node disk size (GB)
-  "eks_version": "1.30"                   // Kubernetes version
-}
-```
-
-### VPC Configuration
-
-```json
-{
-  "vpc_max_azs": 2,              // Number of availability zones
-  "enable_nat_gateway": true,    // Enable NAT gateway
-  "nat_gateways": 1              // Number of NAT gateways (1 for cost savings)
-}
-```
-
-### SQS Configuration
-
-```json
-{
-  "sqs_visibility_timeout": 60,      // Message visibility timeout (seconds)
-  "sqs_retention_period_days": 14,   // Message retention period
-  "sqs_receive_wait_time": 20,       // Long polling wait time (seconds)
-  "sqs_max_receive_count": 5         // Max receives before DLQ
-}
-```
-
-### Storage Configuration
-
-```json
-{
-  "s3_lifecycle_transition_days": 30, // Days before transitioning to IA
-  "ecr_image_count_limit": 10         // Max images to keep per repo
-}
-```
-
-## Deployment to Different Environments
-
-### Development Environment
-
-Use default configuration in `cdk.json` (no custom domain needed):
-
-```bash
-./scripts/deploy.sh
-```
-
-### Production Environment
-
-1. Create `cdk.prod.json` with production configuration
-2. Deploy with custom context:
-
-```bash
-cd cdk
-cdk deploy --all -c project_name=openclaw-saas -c environment=prod \
-  -c domain_name=openclaw.example.com \
-  -c hosted_zone_id=Z1234567890ABC \
-  -c db_instance_class=db.t4g.small \
-  -c eks_node_instance_type=t4g.large
-```
-
-### Multi-Region Deployment
-
-Simply set different AWS region and deploy:
-
-```bash
-export CDK_DEFAULT_REGION=eu-west-1
-./scripts/deploy.sh
-```
-
-All resources will be created in the specified region.
-
-## Stack Outputs
-
-After deployment, useful outputs are available:
-
-```bash
-# Get all stack outputs
-aws cloudformation describe-stacks --stack-name openclaw-saas-dev-eks --query "Stacks[0].Outputs"
-
-# Specific outputs
-CLUSTER_NAME=$(aws cloudformation describe-stacks --stack-name openclaw-saas-dev-eks \
-  --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue" --output text)
-
-DB_ENDPOINT=$(aws cloudformation describe-stacks --stack-name openclaw-saas-dev-rds \
-  --query "Stacks[0].Outputs[?OutputKey=='DbEndpoint'].OutputValue" --output text)
-
-ECR_REPO=$(aws cloudformation describe-stacks --stack-name openclaw-saas-dev-ecr \
-  --query "Stacks[0].Outputs[?OutputKey=='PlatformRepoUriOutput'].OutputValue" --output text)
-```
-
-## Infrastructure Details
 
 ### CDK Stacks
 
-| Stack | Resources | Purpose |
-|-------|-----------|---------|
-| VPC | VPC, Subnets, NAT, VPC Endpoints | Network foundation |
-| EKS | EKS Cluster, Node Groups, Addons | Kubernetes control plane |
-| RDS | PostgreSQL 16, Secrets, Security Groups | Application database |
-| ECR | 3 repositories with lifecycle policies | Container images |
-| SQS | Usage events queue + DLQ | Async processing |
-| S3 | Backups bucket with lifecycle | Backups and artifacts |
-| IAM | IRSA roles, node policies | Access control |
-| DNS | ACM certificate, Route53 (optional) | SSL and DNS |
+| Stack | 资源 | 部署时间 |
+|-------|------|---------|
+| vpc | VPC, 3 AZ, NAT, VPC Endpoints (S3/ECR/STS) | ~3 min |
+| karpenter-node | Karpenter Node Role + Instance Profile | ~30s |
+| sqs | Usage Events + DLQ + Karpenter 中断队列 + 4 条 EventBridge 规则 | ~30s |
+| s3 | 备份桶 + Backup Role (Pod Identity) | ~30s |
+| eks | EKS 集群 (L1 CfnCluster), 节点组, Addons, OIDC, Access Entry | ~15 min |
+| efs | EFS 共享存储 + Mount Targets | ~2 min |
+| iam | ALB Controller (IRSA), Karpenter Controller (IRSA), EFS CSI (Pod Identity), Platform API (Pod Identity), 节点 SQS/ALB 权限 | ~1 min |
+| rds | PostgreSQL 16, db.t4g.medium, gp3 加密 | ~5 min |
 
-### Kubernetes Components
+> **注意：** CDK 使用 L1 construct (CfnCluster)，不创建 Lambda。EKS 集群创建者是你的 IAM 身份，`kubectl` 直接可用。ECR 仓库由 `deploy.sh` 创建（不在 CDK 中）。
 
-- **openclaw-operator**: Manages OpenClawInstance CRDs
-- **AWS Load Balancer Controller**: Provisions ALB for ingresses
-- **EBS CSI Driver**: Persistent storage for stateful workloads
-- **platform-api**: Multi-tenant control plane API
+## deploy.sh 流程
 
-### Security
-
-- All traffic in private subnets (EKS nodes, RDS)
-- ALB in public subnets for ingress
-- Encrypted storage (EBS, RDS, S3)
-- Secrets Manager for DB credentials
-- IRSA (IAM Roles for Service Accounts) for pod permissions
-- Security groups restrict access between components
-
-## Operations
-
-### Scaling
-
-```bash
-# Scale EKS nodes
-aws eks update-nodegroup-config \
-  --cluster-name ${CLUSTER_NAME} \
-  --nodegroup-name GravitonNodes \
-  --scaling-config minSize=3,maxSize=10,desiredSize=5
-
-# Scale platform API
-kubectl scale deployment platform-api -n openclaw-platform --replicas=3
+```
+main()
+  ├── check_prerequisites
+  │
+  ├── deploy_cdk (--skip-cdk 跳过)
+  │     ├── 激活 Python venv（不存在则自动创建）
+  │     ├── cdk bootstrap
+  │     ├── 自动检测 deployer IAM Role → 传入 CDK 创建 Access Entry
+  │     └── cdk deploy --all（VPC, EKS, EFS, RDS, SQS, S3, IAM, Karpenter）
+  │
+  ├── create_ecr_repos（始终执行，幂等）
+  │     ├── 平台镜像仓库（platform, metrics-exporter, billing-consumer）
+  │     ├── Mirror 仓库（openclaw, nginx, uv, otel-collector, operator, alb-controller）
+  │     └── Helm chart 仓库（charts/aws-load-balancer-controller, charts/openclaw-operator）
+  │
+  └── K8s 部署 (--skip-k8s 跳过)
+        ├── configure_kubectl         ← 无需 --role-arn
+        ├── ensure_storage_class      ← apply gp3 StorageClass（EBS CSI Driver）
+        ├── install_alb_controller    ← 优先从 CN ECR 安装 chart，配置 IRSA
+        ├── install_openclaw_operator ← 优先从 CN ECR 安装 chart
+        ├── create_platform_secret    ← 从 CDK/CF 输出 + .env 组装 K8s Secret
+        ├── deploy_platform_api       ← 自动检测 NLB SG → LoadBalancer / ClusterIP
+        ├── deploy_billing_consumer
+        └── verify_deployment         ← 输出 NLB / Ingress 访问地址
 ```
 
-### Database Access
+**参数组合：**
+
+| 命令 | 效果 |
+|------|------|
+| `deploy.sh` | 全量部署：CDK + ECR + K8s |
+| `deploy.sh --skip-cdk` | 跳过 CDK，只部署 ECR + K8s（基础设施已存在时） |
+| `deploy.sh --skip-k8s` | 只部署 CDK + ECR，不操作 K8s（镜像还没准备好时） |
+
+## EKS 访问
+
+CDK 部署时自动检测当前 IAM 身份，通过 EKS Access Entry 授予 cluster-admin 权限。无需手动 assume role 或修改 trust policy。
 
 ```bash
-# Get DB credentials from Secrets Manager
-DB_SECRET_ARN=$(aws cloudformation describe-stacks --stack-name openclaw-saas-dev-rds \
-  --query "Stacks[0].Outputs[?OutputKey=='DbSecretArn'].OutputValue" --output text)
-
-aws secretsmanager get-secret-value --secret-id ${DB_SECRET_ARN} --query SecretString --output text | jq
-
-# Port-forward to access DB
-kubectl run psql-client --rm -it --image=postgres:16-alpine -- \
-  psql "postgresql://username:password@endpoint:5432/dbname"
+# 直接访问，无需 --role-arn
+aws eks update-kubeconfig --name openclaw-prod --region cn-northwest-1
+kubectl get nodes
 ```
 
-### Logs
+## 与 CloudFormation 模板的关系
+
+`cloudformation/cloudformation-ec2.yaml` 和 CDK 创建的资源完全一致：
+
+| 资源 | CloudFormation | CDK |
+|------|---------------|-----|
+| VPC (3 AZ, NAT) | ✅ | ✅ |
+| EKS + Addons + Pod Identity Agent | ✅ | ✅ |
+| EFS | ✅ | ✅ |
+| Karpenter (Node Role + Controller + SQS + EventBridge) | ✅ | ✅ |
+| ALB Controller IAM (IRSA) | ✅ | ✅ |
+| RDS PostgreSQL 16 | ✅ | ✅ |
+| SQS (Usage + DLQ) | ✅ | ✅ |
+| S3 + Backup Role | ✅ | ✅ |
+| EC2 跳板机 | ✅ | ❌ (不需要) |
+| ECR 仓库 | ❌ | ❌ (deploy.sh 创建) |
+
+CloudFormation 额外包含 EC2 跳板机（含完整 IAM 权限），适合 Workshop 场景。CDK 适合生产环境持续迭代。
+
+## 销毁
 
 ```bash
-# Platform API logs
-kubectl logs -n openclaw-platform -l app=platform-api -f
+export AWS_PROFILE=default AWS_DEFAULT_REGION=cn-northwest-1
 
-# OpenClawInstance logs
-kubectl logs -n tenant-123 -l app=openclaw -f
-```
-
-### Monitoring
-
-Check observability/ directory for Prometheus, Grafana, and Loki setup.
-
-## Troubleshooting
-
-### CDK Deployment Fails
-
-```bash
-# Check CloudFormation events
-aws cloudformation describe-stack-events --stack-name openclaw-saas-dev-vpc
-
-# Rollback and retry
-cdk destroy openclaw-saas-dev-vpc
-cdk deploy openclaw-saas-dev-vpc
-```
-
-### Platform API Not Starting
-
-```bash
-# Check pod status
-kubectl describe pod -n openclaw-platform -l app=platform-api
-
-# Check logs
-kubectl logs -n openclaw-platform -l app=platform-api --previous
-
-# Check secret exists
-kubectl get secret platform-api-config -n openclaw-platform
-```
-
-### ALB Not Provisioned
-
-```bash
-# Check ALB controller logs
-kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller -f
-
-# Check ingress status
-kubectl describe ingress platform-ingress -n openclaw-platform
-```
-
-## Cleanup
-
-```bash
-# Delete all OpenClawInstances first
+# 1. 清理 K8s 资源
 kubectl delete openclawinstance --all --all-namespaces
+kubectl delete ns openclaw-platform
 
-# Delete platform resources
-kubectl delete namespace openclaw-platform
-
-# Destroy CDK stacks
+# 2. CDK 反序销毁
 cd cdk
-cdk destroy --all
+cdk destroy openclaw-saas-rds openclaw-saas-iam --force
+cdk destroy openclaw-saas-efs --force
+# 清空 S3 桶
+BUCKET=$(aws s3 ls | grep openclaw-backups | awk '{print $3}')
+aws s3 rm s3://${BUCKET} --recursive
+cdk destroy openclaw-saas-s3 --force
+cdk destroy openclaw-saas-eks --force    # ~15-20 min
+cdk destroy openclaw-saas-sqs openclaw-saas-karpenter-node --force
+cdk destroy openclaw-saas-vpc --force
+
+# 3. 手动删除 ECR 仓库
+for repo in openclaw-saas-platform openclaw-saas-metrics-exporter openclaw-saas-billing-consumer; do
+  aws ecr delete-repository --repository-name ${repo} --force --region cn-northwest-1
+done
 ```
 
-**Note**: RDS will create a final snapshot before deletion. S3 buckets and ECR repos have `RETAIN` policy.
+> ECR 仓库含镜像和 S3 桶含数据时不会被自动删除，需手动清理。
 
-## Cost Optimization
+## 成本估算 (CN)
 
-Current setup is optimized for dev/test with ~$150-200/month AWS costs:
+~$150-200/月：
 
-- **EKS**: ~$73/month (control plane)
-- **EC2**: ~$30/month (2x t4g.medium nodes)
-- **RDS**: ~$13/month (db.t4g.micro)
-- **NAT Gateway**: ~$32/month
-- **Other**: ~$20/month (ALB, VPC endpoints, storage)
-
-Production optimizations:
-- Use reserved instances for nodes
-- Multi-AZ RDS for HA (~2x cost)
-- More NAT gateways for HA (~$32/month each)
-- CloudFront CDN for global distribution
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines.
-
-## License
-
-[License information]
+| 资源 | 月费 |
+|------|------|
+| EKS 控制面 | ~$73 |
+| 2× m6g.xlarge 节点 | ~$60 |
+| RDS db.t4g.medium | ~$25 |
+| NAT Gateway | ~$32 |
+| 其他 (S3, SQS, EFS, VPC Endpoints) | ~$20 |

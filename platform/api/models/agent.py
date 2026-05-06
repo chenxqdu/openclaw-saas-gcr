@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Column, DateTime, ForeignKey, Integer, JSON, String
 
 from api.database import Base
+from api.config import settings
 
 
 class AgentStatus(str, Enum):
@@ -56,7 +57,7 @@ LLM_PROVIDERS = {
             "models": {
                 "providers": {
                     "amazon-bedrock": {
-                        "baseUrl": "https://bedrock-runtime.us-west-2.amazonaws.com",
+                        "baseUrl": f"https://bedrock-runtime.{settings.AWS_REGION}.amazonaws.com{settings.aws_endpoint_suffix}",
                         "auth": "aws-sdk",
                         "api": "bedrock-converse-stream",
                         "models": [
@@ -120,7 +121,7 @@ LLM_PROVIDERS = {
             "models": {
                 "providers": {
                     "amazon-bedrock": {
-                        "baseUrl": "https://bedrock-runtime.us-west-2.amazonaws.com",
+                        "baseUrl": f"https://bedrock-runtime.{settings.AWS_REGION}.amazonaws.com{settings.aws_endpoint_suffix}",
                         "auth": "aws-sdk",
                         "api": "bedrock-converse-stream",
                         "models": [
@@ -180,8 +181,21 @@ class LLMUpdateRequest(BaseModel):
     llm_api_keys: Optional[Dict[str, str]] = None
 
 
+class ModelPoolAddRequest(BaseModel):
+    """Add a model to an agent's pool"""
+
+    model_id: str = Field(..., min_length=1)
+    set_default: bool = False
+
+
+class ModelPoolSetDefaultRequest(BaseModel):
+    """Set the default model in an agent's pool"""
+
+    model_id: str = Field(..., min_length=1)
+
+
 class ChannelBindRequest(BaseModel):
     """Channel binding request schema"""
 
-    channel_type: str = Field(..., pattern="^(telegram|feishu|discord|whatsapp)$")
+    channel_type: str = Field(..., pattern="^(telegram|feishu|discord|whatsapp|wecom)$")
     credentials: Dict[str, str]

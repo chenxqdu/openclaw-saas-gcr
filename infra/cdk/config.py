@@ -14,44 +14,38 @@ class Config:
 
         # Project identification
         self.project_name = self._get_context("project_name", "openclaw-saas")
-        self.environment = self._get_context("environment", "dev")
-
-        # Domain and DNS configuration
-        self.domain_name = self._get_context("domain_name", "")
-        self.hosted_zone_id = self._get_context("hosted_zone_id", "")
-        self.hosted_zone_name = self._get_context("hosted_zone_name", "")
-        self.acm_cert_arn = self._get_context("acm_cert_arn", "")
-
-        # RDS configuration
-        self.db_instance_class = self._get_context("db_instance_class", "db.t4g.micro")
-        self.db_name = self._get_context("db_name", "openclawsaas")
-        self.db_allocated_storage = self._get_context("db_allocated_storage", 20)
-        self.db_max_allocated_storage = self._get_context("db_max_allocated_storage", 100)
+        self.environment = self._get_context("environment", "")
 
         # EKS configuration
-        self.eks_node_instance_type = self._get_context("eks_node_instance_type", "t4g.medium")
+        self.cluster_name = self._get_context("cluster_name", "openclaw-prod")
+        self.eks_version = self._get_context("eks_version", "1.31")
+        self.eks_node_instance_type = self._get_context("eks_node_instance_type", "m6g.xlarge")
+        self.eks_node_ami_type = self._get_context("eks_node_ami_type", "AL2023_ARM_64_STANDARD")
         self.eks_node_min = self._get_context("eks_node_min", 2)
-        self.eks_node_max = self._get_context("eks_node_max", 5)
+        self.eks_node_max = self._get_context("eks_node_max", 4)
         self.eks_node_desired = self._get_context("eks_node_desired", 2)
-        self.eks_node_disk_size = self._get_context("eks_node_disk_size", 50)
-        self.eks_version = self._get_context("eks_version", "1.30")
+        self.eks_node_volume_size = self._get_context("eks_node_volume_size", 100)
+        self.oidc_thumbprint = self._get_context(
+            "oidc_thumbprint", "9e99a48a9960b14926bb7f3b02e22da2b0ab7280"
+        )
 
         # VPC configuration
-        self.vpc_max_azs = self._get_context("vpc_max_azs", 2)
-        self.enable_nat_gateway = self._get_context("enable_nat_gateway", True)
-        self.nat_gateways = self._get_context("nat_gateways", 1)
+        self.vpc_cidr = self._get_context("vpc_cidr", "172.31.0.0/16")
+        self.vpc_max_azs = self._get_context("vpc_max_azs", 3)
+
+        # RDS configuration
+        self.db_instance_class = self._get_context("db_instance_class", "db.t4g.medium")
+        self.db_name = self._get_context("db_name", "openclawsaas")
+        self.db_allocated_storage = self._get_context("db_allocated_storage", 50)
+        self.db_max_allocated_storage = self._get_context("db_max_allocated_storage", 200)
 
         # SQS configuration
-        self.sqs_visibility_timeout = self._get_context("sqs_visibility_timeout", 60)
-        self.sqs_retention_period_days = self._get_context("sqs_retention_period_days", 14)
-        self.sqs_receive_wait_time = self._get_context("sqs_receive_wait_time", 20)
-        self.sqs_max_receive_count = self._get_context("sqs_max_receive_count", 5)
+        self.sqs_visibility_timeout = self._get_context("sqs_visibility_timeout", 300)
+        self.sqs_retention_period_days = self._get_context("sqs_retention_period_days", 4)
+        self.sqs_max_receive_count = self._get_context("sqs_max_receive_count", 3)
 
         # S3 configuration
         self.s3_lifecycle_transition_days = self._get_context("s3_lifecycle_transition_days", 30)
-
-        # ECR configuration
-        self.ecr_image_count_limit = self._get_context("ecr_image_count_limit", 10)
 
     def _get_context(self, key: str, default=None):
         """Get context value with fallback to default"""
@@ -61,32 +55,24 @@ class Config:
     @property
     def stack_prefix(self) -> str:
         """Get stack name prefix"""
-        return f"{self.project_name}-{self.environment}"
+        if self.environment:
+            return f"{self.project_name}-{self.environment}"
+        return self.project_name
 
     @property
     def resource_prefix(self) -> str:
         """Get resource name prefix"""
-        return f"{self.project_name}-{self.environment}"
-
-    @property
-    def has_custom_domain(self) -> bool:
-        """Check if custom domain is configured"""
-        return bool(self.domain_name)
-
-    @property
-    def has_hosted_zone(self) -> bool:
-        """Check if Route53 hosted zone is configured"""
-        return bool(self.hosted_zone_id and self.hosted_zone_name)
-
-    @property
-    def has_acm_cert(self) -> bool:
-        """Check if ACM certificate is configured"""
-        return bool(self.acm_cert_arn)
+        if self.environment:
+            return f"{self.project_name}-{self.environment}"
+        return self.project_name
 
     def get_tags(self) -> dict:
         """Get common tags for all resources"""
-        return {
-            "Project": self.project_name,
-            "Environment": self.environment,
+        tags = {
+            "Project": "openclaw-multi-tenant",
             "ManagedBy": "CDK",
+            "Environment": "production",
         }
+        if self.environment:
+            tags["Environment"] = self.environment
+        return tags

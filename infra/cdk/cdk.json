@@ -6,38 +6,32 @@
     "@aws-cdk/aws-rds:lowercaseDbIdentifier": true,
     "@aws-cdk/aws-lambda:recognizeVersionProps": true,
     "@aws-cdk/aws-cloudfront:defaultSecurityPolicyTLSv1.2_2021": true,
-    "@aws-cdk/core:target-partitions": ["aws-cn"],
 
     "project_name": "openclaw-saas",
-    "environment": "dev",
+    "environment": "",
 
-    "domain_name": "",
-    "hosted_zone_id": "",
-    "hosted_zone_name": "",
-    "acm_cert_arn": "",
-
-    "db_instance_class": "t4g.micro",
-    "db_name": "openclawsaas",
-    "db_allocated_storage": 20,
-    "db_max_allocated_storage": 100,
-
-    "eks_node_instance_type": "t4g.medium",
+    "cluster_name": "openclaw-prod",
+    "eks_version": "1.31",
+    "eks_node_instance_type": "m6g.xlarge",
+    "eks_node_ami_type": "AL2023_ARM_64_STANDARD",
     "eks_node_min": 2,
-    "eks_node_max": 5,
+    "eks_node_max": 4,
     "eks_node_desired": 2,
-    "eks_node_disk_size": 50,
-    "eks_version": "1.30",
+    "eks_node_volume_size": 100,
+    "oidc_thumbprint": "9e99a48a9960b14926bb7f3b02e22da2b0ab7280",
 
-    "vpc_max_azs": 2,
-    "enable_nat_gateway": true,
-    "nat_gateways": 1,
+    "vpc_cidr": "172.31.0.0/16",
+    "vpc_max_azs": 3,
 
-    "sqs_visibility_timeout": 60,
-    "sqs_retention_period_days": 14,
-    "sqs_receive_wait_time": 20,
-    "sqs_max_receive_count": 5,
+    "db_instance_class": "t4g.medium",
+    "db_name": "openclawsaas",
+    "db_allocated_storage": 50,
+    "db_max_allocated_storage": 200,
 
-    "s3_lifecycle_transition_days": 30,
-    "ecr_image_count_limit": 10
+    "sqs_visibility_timeout": 300,
+    "sqs_retention_period_days": 4,
+    "sqs_max_receive_count": 3,
+
+    "s3_lifecycle_transition_days": 30
   }
 }

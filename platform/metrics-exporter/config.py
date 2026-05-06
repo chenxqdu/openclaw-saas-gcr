@@ -11,17 +11,11 @@ class Config:
 
     # SQS configuration
     SQS_QUEUE_URL = os.getenv("SQS_QUEUE_URL", "")
-    AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", "cn-northwest-1")
+    AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION", os.getenv("AWS_REGION", ""))
 
-    # Scanning configuration
+    # Scrape configuration
     SCAN_INTERVAL_SECONDS = int(os.getenv("SCAN_INTERVAL_SECONDS", "30"))
-    DATA_DIR = os.getenv("DATA_DIR", "/home/openclaw/.openclaw")
-
-    # Metrics configuration
-    METRICS_PORT = int(os.getenv("METRICS_PORT", "9090"))
-
-    # State file for tracking file positions
-    STATE_FILE = "/tmp/metrics-state.json"
+    OTEL_METRICS_PORT = int(os.getenv("OTEL_METRICS_PORT", "9090"))
 
     @classmethod
     def validate(cls):

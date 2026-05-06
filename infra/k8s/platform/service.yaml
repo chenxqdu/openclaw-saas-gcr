@@ -5,12 +5,17 @@ metadata:
   namespace: openclaw-platform
   labels:
     app: platform-api
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "external"
+    service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    service.beta.kubernetes.io/aws-load-balancer-security-groups: "${NLB_SECURITY_GROUP_ID}"
 spec:
-  type: ClusterIP
+  type: ${SERVICE_TYPE}
   selector:
     app: platform-api
   ports:
-    - port: 8000
+    - port: 8890
       targetPort: 8000
       protocol: TCP
       name: http

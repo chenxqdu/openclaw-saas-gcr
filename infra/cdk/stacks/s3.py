@@ -1,6 +1,10 @@
-"""S3 stack for OpenClaw SaaS"""
+"""S3 stack for OpenClaw SaaS — mirrors CloudFormation template.
+
+Includes: Backup Bucket + Backup IAM Role (Pod Identity).
+"""
 import aws_cdk as cdk
 from aws_cdk import aws_s3 as s3
+from aws_cdk import aws_iam as iam
 from constructs import Construct
 
 
@@ -10,15 +14,17 @@ class S3Stack(cdk.Stack):
         scope: Construct,
         construct_id: str,
         config,
-        **kwargs
+        **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Backups and artifacts bucket
+        cluster_name = config.cluster_name
+
+        # Backup bucket (matches CF: openclaw-backups-${AccountId})
         self.backups_bucket = s3.Bucket(
             self,
             "BackupsBucket",
-            bucket_name=f"{config.resource_prefix}-backups-{self.account}-{self.region}",
+            bucket_name=f"openclaw-backups-{self.account}",
             encryption=s3.BucketEncryption.S3_MANAGED,
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             versioned=True,
@@ -42,19 +48,32 @@ class S3Stack(cdk.Stack):
             ],
         )
 
-        # Outputs
-        cdk.CfnOutput(
+        # Backup Role (Pod Identity, matches CF)
+        self.backup_role = iam.Role(
             self,
-            "BackupsBucketName",
-            value=self.backups_bucket.bucket_name,
-            description="S3 bucket for backups and artifacts",
-            export_name=f"{config.stack_prefix}-backups-bucket",
+            "BackupRole",
+            role_name=f"{cluster_name}-openclaw-backup-role",
+            assumed_by=iam.ServicePrincipal("pods.eks.amazonaws.com"),
+        )
+        self.backup_role.assume_role_policy.add_statements(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                principals=[iam.ServicePrincipal("pods.eks.amazonaws.com")],
+                actions=["sts:TagSession"],
+            )
+        )
+        self.backup_role.add_to_policy(
+            iam.PolicyStatement(
+                effect=iam.Effect.ALLOW,
+                actions=["s3:PutObject", "s3:GetObject", "s3:ListBucket", "s3:DeleteObject"],
+                resources=[
+                    self.backups_bucket.bucket_arn,
+                    f"{self.backups_bucket.bucket_arn}/*",
+                ],
+            )
         )
 
-        cdk.CfnOutput(
-            self,
-            "BackupsBucketArn",
-            value=self.backups_bucket.bucket_arn,
-            description="ARN of backups bucket",
-            export_name=f"{config.stack_prefix}-backups-bucket-arn",
-        )
+        # Outputs
+        cdk.CfnOutput(self, "BackupBucketName", value=self.backups_bucket.bucket_name)
+        cdk.CfnOutput(self, "BackupBucketArn", value=self.backups_bucket.bucket_arn)
+        cdk.CfnOutput(self, "BackupRoleArn", value=self.backup_role.role_arn)

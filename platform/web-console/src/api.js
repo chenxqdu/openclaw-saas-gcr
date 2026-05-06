@@ -48,7 +48,13 @@ class ApiClient {
       throw new Error('Unauthorized')
     }
     if (res.status === 204) return null
-    const data = await res.json()
+    let data
+    try {
+      data = await res.json()
+    } catch {
+      if (!res.ok) throw new Error(`Request failed (${res.status})`)
+      throw new Error('Invalid response from server')
+    }
     if (!res.ok) {
       let msg = 'Request failed'
       if (typeof data.detail === 'string') {
@@ -113,6 +119,29 @@ class ApiClient {
     return this.request(`/api/v1/tenants/${tenant}/agents/${agentId}/config`, {
       method: 'PUT', body: JSON.stringify({ config })
     })
+  }
+
+  // Model pool (uncached — mutations must see fresh state)
+  getAgentModels(tenant, agentId) {
+    return this.request(`/api/v1/tenants/${tenant}/agents/${agentId}/models`)
+  }
+  addAgentModel(tenant, agentId, modelId, setDefault = false) {
+    return this.request(`/api/v1/tenants/${tenant}/agents/${agentId}/models`, {
+      method: 'POST',
+      body: JSON.stringify({ model_id: modelId, set_default: setDefault }),
+    })
+  }
+  setAgentModelDefault(tenant, agentId, modelId) {
+    return this.request(`/api/v1/tenants/${tenant}/agents/${agentId}/models/default`, {
+      method: 'PUT',
+      body: JSON.stringify({ model_id: modelId }),
+    })
+  }
+  removeAgentModel(tenant, agentId, modelId) {
+    return this.request(
+      `/api/v1/tenants/${tenant}/agents/${agentId}/models/${encodeURIComponent(modelId)}`,
+      { method: 'DELETE' }
+    )
   }
 
   // Channels (cached — rarely changes)
