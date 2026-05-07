@@ -285,7 +285,19 @@ class K8sClient:
                         "apiKey": "${CUSTOM_API_KEY}",
                         "api": "openai-completions",
                         "models": [
-                            {"id": model_id, "name": model_id, "contextWindow": 200000, "maxTokens": 8192},
+                            {
+                                "id": model_id,
+                                "name": model_id,
+                                "contextWindow": 200000,
+                                "maxTokens": 8192,
+                                # OpenClaw's heuristic marks any non-default baseUrl as
+                                # "usesConfiguredNonOpenAIEndpoint" and defaults
+                                # supportsUsageInStreaming=false -> stream_options.include_usage
+                                # is not sent -> proxy returns no usage -> model.usage event
+                                # is gated out -> openclaw_tokens_* never appear. LiteLLM does
+                                # honor include_usage, so force-enable here.
+                                "compat": {"supportsUsageInStreaming": True},
+                            },
                         ],
                     }
                 }
