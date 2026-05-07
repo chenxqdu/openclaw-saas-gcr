@@ -16,11 +16,12 @@ REGION="${REGION:-cn-northwest-1}"
 # → ${ECR_REGISTRY}/openclaw/openclaw) land on images kubelet already has.
 ECR_REGISTRY="${ECR_REGISTRY:-public.ecr.aws/i4x4j7g8/openclaw-saas}"
 
-# ALB Controller chart (upstream HTTP repo — AWS does not publish OCI chart on public ECR).
-# Image default from chart is public.ecr.aws/eks/aws-load-balancer-controller:v2.13.4,
-# accessible from CN nodes without mirror.
-ALB_CHART_REPO="${ALB_CHART_REPO:-https://aws.github.io/eks-charts}"
-ALB_CHART_VERSION="${ALB_CHART_VERSION:-1.13.4}"
+# ALB Controller: static yaml rendered from aws.github.io/eks-charts
+# v3.2.1 (see yaml/aws-load-balancer-controller.yaml header for refresh
+# steps). The CN EKS IDE cannot reach aws.github.io, so installing via
+# `helm repo add` at runtime is not reliable. The image itself
+# (public.ecr.aws/eks/aws-load-balancer-controller:v3.2.1) IS reachable
+# from CN nodes.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -69,22 +70,14 @@ aws eks wait addon-active \
 aws eks describe-addon --cluster-name "$CLUSTER_NAME" --addon-name aws-efs-csi-driver \
   --region "$REGION" --query 'addon.{Status:status,Version:addonVersion}' --output table
 
-# 2. ALB Controller (upstream HTTP chart — image pulls from public.ecr.aws/eks/...)
+# 2. ALB Controller (pre-rendered yaml — matches operator / platform yaml style)
 echo ""
-echo ">>> [2/5] Installing ALB Controller (chart $ALB_CHART_VERSION)..."
-helm repo add eks "$ALB_CHART_REPO" 2>/dev/null || true
-helm repo update eks
-helm upgrade --install aws-load-balancer-controller \
-  eks/aws-load-balancer-controller \
-  --namespace kube-system \
-  --version "$ALB_CHART_VERSION" \
-  --set clusterName="$CLUSTER_NAME" \
-  --set serviceAccount.create=true \
-  --set serviceAccount.name=aws-load-balancer-controller \
-  --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$ALB_CONTROLLER_ROLE_ARN" \
-  --set region="$REGION" \
-  --set vpcId="$VPC_ID" \
-  --wait --timeout 5m
+echo ">>> [2/5] Installing ALB Controller (yaml/aws-load-balancer-controller.yaml)..."
+sed -e "s|\${CLUSTER_NAME}|$CLUSTER_NAME|g" \
+    -e "s|\${ALB_CONTROLLER_ROLE_ARN}|$ALB_CONTROLLER_ROLE_ARN|g" \
+    "$SCRIPT_DIR/../yaml/aws-load-balancer-controller.yaml" \
+  | kubectl apply --server-side --force-conflicts -n kube-system -f -
+kubectl -n kube-system rollout status deployment/aws-load-balancer-controller --timeout=180s
 
 # 3. StorageClasses
 echo ""

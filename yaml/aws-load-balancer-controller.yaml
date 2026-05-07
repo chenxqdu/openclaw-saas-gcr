@@ -1,0 +1,652 @@
+# aws-load-balancer-controller — rendered statically from the upstream
+# Helm chart (aws.github.io/eks-charts v3.2.1 → controller image v3.2.1).
+# Workshop does NOT `helm install` this chart at runtime because the
+# CN EKS IDE cannot reach aws.github.io (GFW resets the TLS handshake).
+#
+# Placeholders substituted by scripts/step2-k8s-components.sh via sed:
+#   ${CLUSTER_NAME}, ${ALB_CONTROLLER_ROLE_ARN}
+#
+# To refresh after an upstream chart bump:
+#   helm repo add eks https://aws.github.io/eks-charts  (from a network with github.io access)
+#   helm repo update eks
+#   helm pull eks/aws-load-balancer-controller --version <new-ver>
+#   helm template aws-load-balancer-controller ./aws-load-balancer-controller-<ver>.tgz \
+#     --namespace kube-system \
+#     --set clusterName=PLACEHOLDER_CLUSTER_NAME \
+#     --set serviceAccount.create=true \
+#     --set serviceAccount.name=aws-load-balancer-controller \
+#     --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=PLACEHOLDER_ALB_CONTROLLER_ROLE_ARN" \
+#     | sed -e 's|PLACEHOLDER_CLUSTER_NAME|${CLUSTER_NAME}|g' \
+#           -e 's|PLACEHOLDER_ALB_CONTROLLER_ROLE_ARN|${ALB_CONTROLLER_ROLE_ARN}|g' \
+#     > yaml/aws-load-balancer-controller.yaml
+#
+---
+# Source: aws-load-balancer-controller/templates/serviceaccount.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-load-balancer-controller
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+  annotations:
+    eks.amazonaws.com/role-arn: ${ALB_CONTROLLER_ROLE_ARN}
+automountServiceAccountToken: true
+---
+# Source: aws-load-balancer-controller/templates/webhook.yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-load-balancer-tls
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+type: kubernetes.io/tls
+data:
+  ca.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  tls.crt: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUQ4RENDQXRpZ0F3SUJBZ0lRV1FMMmpieFlRUFdZekI4di8ycXY1ekFOQmdrcWhraUc5dzBCQVFzRkFEQXEKTVNnd0pnWURWUVFERXg5aGQzTXRiRzloWkMxaVlXeGhibU5sY2kxamIyNTBjbTlzYkdWeUxXTmhNQjRYRFRJMgpNRFV3TnpBMU5UTXpPVm9YRFRNMk1EVXdOREExTlRNek9Wb3dKekVsTUNNR0ExVUVBeE1jWVhkekxXeHZZV1F0ClltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNqQ0NBU0l3RFFZSktvWklodmNOQVFFQkJRQURnZ0VQQURDQ0FRb0MKZ2dFQkFNQmRSU1JtYnE4SlNRdzluTlIvVUl4UFZoWjdIRHMyTWtIc3dQOGFjT2F0ZWdsU200ajBSUkZydk9oLwpobTJpRkZ5S2NsK1NhUUs2My9XOHVETmRVbkJZZUYwMzRPK3d2cm9UVU41b2E5MlZkcHBja1JjYXJxRmVqTGo0Cm1iTUtmZEk1R1NWUnNXcVRoT09WMkFQbnU1cjM0dXVXRFkxSWVDNFhQdkQ5aDdJVHZMdmZtZ0p4SmNjVm5JeFoKY1RWMjFVeTkrdWRRMWplOTlTMWQxUmNLRHVLUjVEdnI0bG1EY0h6dUU2Yk5uOVcyS2lzd0lHLzI2UHhyUDZNbwpnK0JyekhoWE1kRlQ1NndYb24vUklKa2tMNksyVVhRUWFDQmlDeUpTZVlINm5hSGxjMSt0eHMrWVFJTWNLVnV2CnZSVVd1aDhiWm1yQUFISTJ6aUt2MTB6eEl2TUNBd0VBQWFPQ0FSTXdnZ0VQTUE0R0ExVWREd0VCL3dRRUF3SUYKb0RBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEQVlEVlIwVEFRSC9CQUl3QURBZgpCZ05WSFNNRUdEQVdnQlI2TndwZy9aNk5PT3lpdXZlazBVVnVqSzBndURDQnJnWURWUjBSQklHbU1JR2pnaTFoCmQzTXRiRzloWkMxaVlXeGhibU5sY2kxM1pXSm9iMjlyTFhObGNuWnBZMlV1YTNWaVpTMXplWE4wWlcyQ01XRjMKY3kxc2IyRmtMV0poYkdGdVkyVnlMWGRsWW1odmIyc3RjMlZ5ZG1salpTNXJkV0psTFhONWMzUmxiUzV6ZG1PQwpQMkYzY3kxc2IyRmtMV0poYkdGdVkyVnlMWGRsWW1odmIyc3RjMlZ5ZG1salpTNXJkV0psTFhONWMzUmxiUzV6CmRtTXVZMngxYzNSbGNpNXNiMk5oYkRBTkJna3Foa2lHOXcwQkFRc0ZBQU9DQVFFQXM1b0ZOV1IwbHdFbE1DZE4KWkhzZ0ptSWdDRGZPcmwwQ1plSHRrMjJ4dWJYTHVKSHN4emlTV2lEcU9qSzg5UlU3cTdhL1JRRFdiM3Q1Zk40UAo1U1crdm1QOGlnOEdxV3paMGZFZ1dyaDllV1VUTTNXcGxVK096ZVhsa0JGSWhuejUvMFd5UlpSdDBldVR5bDZOCkZVcDVZSWtFVzBUVkZyN2IwaVZWREdFZ2VOVm5iNFh2bSt5VCs1ZmRRZ3UxQWIrU0ZOMzNkTEFOSnJFNWprMUUKQ3R5Rm5TQVM1NFcvUGFKM2hWN0xZTSttbTFtY0phQkJSMHVIN0hIVXNBRFJ3S3JudEMxT0NzbVlNeHNscW9VNgpsV0xUbjhQYlBVL1QrRFRRSXk0TEVodEx0TDFFT0NuaTNIV2lhUGxzQ2p2dk5EaHZHUUxERkJSbzdZTVRCcmtBCkxNbzFoUT09Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+  tls.key: LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFcEFJQkFBS0NBUUVBd0YxRkpHWnVyd2xKREQyYzFIOVFqRTlXRm5zY096WXlRZXpBL3hwdzVxMTZDVktiCmlQUkZFV3U4NkgrR2JhSVVYSXB5WDVKcEFycmY5Ynk0TTExU2NGaDRYVGZnNzdDK3VoTlEzbWhyM1pWMm1seVIKRnhxdW9WNk11UGlac3dwOTBqa1pKVkd4YXBPRTQ1WFlBK2U3bXZmaTY1WU5qVWg0TGhjKzhQMkhzaE84dTkrYQpBbkVseHhXY2pGbHhOWGJWVEwzNjUxRFdONzMxTFYzVkZ3b080cEhrTyt2aVdZTndmTzRUcHMyZjFiWXFLekFnCmIvYm8vR3Mvb3lpRDRHdk1lRmN4MFZQbnJCZWlmOUVnbVNRdm9yWlJkQkJvSUdJTElsSjVnZnFkb2VWelg2M0cKejVoQWd4d3BXNis5RlJhNkh4dG1hc0FBY2piT0lxL1hUUEVpOHdJREFRQUJBb0lCQUMvMVVPNmhSd2tHaEpxegpwYXpvek5rZVVuVXFYa0I0NDVEQ0NOL1E1TUx1RHhYUjdZcjRjMXZEZzRabmZNbEtkazhZQ1NuQW84T1ZlWTZYCmJVa0pCQ3VVTXZYeW4zYkNsdHBuUkdzZWwzM1g3SWpSZVM3TWJTczRHbGRuUzFKeTFDbWNLS1BBT1Q0NzV3NmkKWmdlYk40K01LNXZXZml4eUc5eEoyVnhWcVFZQkxKY3FRMTYxcDRFeEg4dWpjQ2c5OUVLMENXcEd3bFNzSE13aAowTG5mYlVFU2RUS0UwRFBkdFZudXhJdzJSSE9wbUZPb09BeWZtY1VyWFlzamtBVk5HbVliV1VKNDcxK2xJNklCCmovTEI0WDMzbmN3MGpjNWh2ZDRoMFl1YnNMMjJSbTE3NTBuV2tWZ2Q5L3lzOWlvaitsNUR2ZFVpK29JN21hZTAKMGQyQ2M4a0NnWUVBODBSUkduOURSMksydHcyQTVrSFEzaE92V09VVklVa3JlZFFnYnJLSmYzbmJJSWtJWEpnTQpqcUpncWU4c2R2VmRyNXpsak9uNkdzNFY5cjRla21XcW9Wd1JMT1hCM3RCUGx3Vkhrc21NSjJaT0JjM1RVaEtDCnlFZ3ZoMXlDVW4zWUQrcEhoaTVKQlhqaFhvWVRjbDUwdCtQWFFwOEdjQzNJYjVHZGM3V2JZV1VDZ1lFQXltN2cKKzE1ZjVMVnRYN205QkdwVStFTW9pOEZWWUkyRWQ1MmpDbTBWKy9jTC9veGNZOXJwSVZDYjhnT0xSdFd3ekxNSwpPM1N5REFxL3VPSEROeHhDT3c2bGNvMWZCWnNza1F2ZTlndWE2VU04cWVrNnlHT0ZTcGdWd2lvR2pjVktzZ0dYCmdDc0VvZHZJNGxPTkRLS1RWZUVjVDJiZmFFdDY0OUdKMFVja0dYY0NnWUFERENjTDh1NHYxYisrT1ZBVkVsd0EKZkRTbEkzR0pValpXTjE4VW8rM3ZCK0xEM0pPYlBWaGk3UXZTOVNrVWNHeDFCNzBrYjhYdlVnZWFhTFZQVmpDMgpCc1k4VHNDSC93b1FOVU81UmdjWWMwS2s5ZmdndmhTZlY3QW92UEx3LzV5V1RuUUk3VW1DNVFuRnVsNUIvNGJzCnl0RG1oOEYzNUVydmd0NTdGWnBWdFFLQmdRQ3N5SXNid3VmU2pOQzRQZzhKcjhDcXpwZlRBY2ZmeTZyZmRodHQKa01LTTk4YXpGQmJmM0QvVWdiczVqTERhV3hhM0FiS2dJUEMvdW9UK1J5U2E2M0hVZXFIWTdyWEdVVFp1NzFUMQphZDVsYjFCZUxvWlArRElUQTFDL0U2UFlhaWRoWEY1MXRVSVU3VVcvZUZVU0RjbjRLVlpDcDZuVW1XaGcvNzdFCmRCWnA3UUtCZ1FDaU9ZZkV6VWx5Y2Foc1JmeFEzVFI1eVFwWWdTOTJGenkrREZ4dXN5eFp5LzBaVzB0eUdiT1cKUkNxU2pWUVo3VjcwVnRXUVlUWllTdkwwT0xZMnlvYXdRQzZCeklmKys1TzRKYnZ0akJJaTMwN1ZWQStZYUEySgpqNEJ0RWZDUllQYytROERzTmFNVmVUUGQ0RXJjblZHczFIQ1dJcDVlMktuNitLcjlrQUpuQlE9PQotLS0tLUVORCBSU0EgUFJJVkFURSBLRVktLS0tLQo=
+---
+# Source: aws-load-balancer-controller/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aws-load-balancer-controller-role
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+rules:
+- apiGroups: ["elbv2.k8s.aws"]
+  resources: [targetgroupbindings]
+  verbs: [create, delete, get, list, patch, update, watch]
+- apiGroups: ["elbv2.k8s.aws"]
+  resources: [ingressclassparams]
+  verbs: [get, list, watch]
+- apiGroups: ["elbv2.k8s.aws"]
+  resources: [albtargetcontrolconfigs]
+  verbs: [get]
+- apiGroups: [""]
+  resources: [events]
+  verbs: [create, patch]
+- apiGroups: [""]
+  resources: [pods]
+  verbs: [get, list, watch]
+- apiGroups: ["networking.k8s.io"]
+  resources: [ingressclasses]
+  verbs: [get, list, watch]
+- apiGroups: ["", "extensions", "networking.k8s.io"]
+  resources: [services, ingresses]
+  verbs: [get, list, patch, update, watch]
+- apiGroups: [""]
+  resources: [nodes, namespaces, endpoints]
+  verbs: [get, list, watch]
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [get, delete, create, update]
+- apiGroups: ["elbv2.k8s.aws", "", "extensions", "networking.k8s.io"]
+  resources: [targetgroupbindings/status, pods/status, services/status, ingresses/status]
+  verbs: [update, patch]
+- apiGroups: ["discovery.k8s.io"]
+  resources: [endpointslices]
+  verbs: [get, list, watch]
+- apiGroups: ["gateway.k8s.aws"]
+  resources: [loadbalancerconfigurations, targetgroupconfigurations, listenerruleconfigurations]
+  verbs: [get, list, watch, patch]
+- apiGroups: ["gateway.k8s.aws"]
+  resources: [loadbalancerconfigurations/finalizers, targetgroupconfigurations/finalizers, listenerruleconfigurations/finalizers]
+  verbs: [update, patch]
+- apiGroups: ["gateway.k8s.aws"]
+  resources: [loadbalancerconfigurations/status, targetgroupconfigurations/status, listenerruleconfigurations/status]
+  verbs: [get, patch, watch]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: [gatewayclasses, gateways]
+  verbs: [get, list, watch, patch]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: [referencegrants]
+  verbs: [get, list, watch]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: [gatewayclasses/finalizers, gateways/finalizers]
+  verbs: [update, patch]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: [gatewayclasses/status, gateways/status]
+  verbs: [get, patch, update]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: [grpcroutes, httproutes, tcproutes, tlsroutes, udproutes, listenersets]
+  verbs: [get, list, watch]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: [grpcroutes/finalizers, httproutes/finalizers, tcproutes/finalizers, tlsroutes/finalizers, udproutes/finalizers, listenersets/finalizers]
+  verbs: [update]
+- apiGroups: ["gateway.networking.k8s.io"]
+  resources: [grpcroutes/status, httproutes/status, tcproutes/status, tlsroutes/status, udproutes/status, listenersets/status]
+  verbs: [get, patch, update]
+- apiGroups: ["aga.k8s.aws"]
+  resources: [globalaccelerators]
+  verbs: [get, list, patch, watch]
+- apiGroups: ["aga.k8s.aws"]
+  resources: [globalaccelerators/finalizers]
+  verbs: [patch, update]
+- apiGroups: ["aga.k8s.aws"]
+  resources: [globalaccelerators/status]
+  verbs: [patch, update]
+---
+# Source: aws-load-balancer-controller/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aws-load-balancer-controller-rolebinding
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: aws-load-balancer-controller-role
+subjects:
+- kind: ServiceAccount
+  name: aws-load-balancer-controller
+  namespace: kube-system
+---
+# Source: aws-load-balancer-controller/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: aws-load-balancer-controller-leader-election-role
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+rules:
+- apiGroups: [""]
+  resources: [configmaps]
+  verbs: [create]
+- apiGroups: [""]
+  resources: [configmaps]
+  resourceNames: [aws-load-balancer-controller-leader]
+  verbs: [get, patch, update]
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  verbs:
+  - create
+- apiGroups:
+  - "coordination.k8s.io"
+  resources:
+  - leases
+  resourceNames:
+  - aws-load-balancer-controller-leader
+  verbs:
+  - get
+  - update
+  - patch
+---
+# Source: aws-load-balancer-controller/templates/rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: aws-load-balancer-controller-leader-election-rolebinding
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: aws-load-balancer-controller-leader-election-role
+subjects:
+- kind: ServiceAccount
+  name: aws-load-balancer-controller
+  namespace: kube-system
+---
+# Source: aws-load-balancer-controller/templates/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: aws-load-balancer-webhook-service
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+    app.kubernetes.io/component: webhook
+    prometheus.io/service-monitor: "false"
+spec:
+  ports:
+  - port: 443
+    name: webhook-server
+    targetPort: webhook-server
+  selector:
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+---
+# Source: aws-load-balancer-controller/templates/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-load-balancer-controller
+  namespace: kube-system
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+spec:
+  
+  replicas: 2
+  
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aws-load-balancer-controller
+      app.kubernetes.io/instance: aws-load-balancer-controller
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aws-load-balancer-controller
+        app.kubernetes.io/instance: aws-load-balancer-controller
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+    spec:
+      serviceAccountName: aws-load-balancer-controller
+      volumes:
+      - name: cert
+        secret:
+          defaultMode: 420
+          secretName: aws-load-balancer-tls
+      securityContext:
+        fsGroup: 65534
+      containers:
+      - name: aws-load-balancer-controller
+        args:
+        - --cluster-name=${CLUSTER_NAME}
+        - --ingress-class=alb
+        - --aws-region=${REGION}
+        - --aws-vpc-id=${VPC_ID}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        image: "public.ecr.aws/eks/aws-load-balancer-controller:v3.2.1"
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - mountPath: /tmp/k8s-webhook-server/serving-certs
+          name: cert
+          readOnly: true
+        ports:
+        - name: webhook-server
+          containerPort: 9443
+          protocol: TCP
+        - name: metrics-server
+          containerPort: 8080
+          protocol: TCP
+        resources:
+          {}
+        livenessProbe:
+          failureThreshold: 2
+          httpGet:
+            path: /healthz
+            port: 61779
+            scheme: HTTP
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+        readinessProbe:
+          failureThreshold: 2
+          httpGet:
+            path: /readyz
+            port: 61779
+            scheme: HTTP
+          initialDelaySeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 10
+      terminationGracePeriodSeconds: 10
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app.kubernetes.io/name
+                  operator: In
+                  values:
+                  - aws-load-balancer-controller
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: "system-cluster-critical"
+---
+# Source: aws-load-balancer-controller/templates/webhook.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: aws-load-balancer-webhook
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+webhooks:
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /mutate-v1-pod
+  failurePolicy: Ignore
+  name: mpod.elbv2.k8s.aws
+  admissionReviewVersions:
+  - v1beta1
+  namespaceSelector:
+    matchExpressions:
+    
+    - key: elbv2.k8s.aws/pod-readiness-gate-inject
+      operator: In
+      values:
+      - enabled
+    
+  objectSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: NotIn
+      values:
+      - aws-load-balancer-controller
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+  sideEffects: None
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /mutate-v1-pod-server-id
+  failurePolicy: Fail
+  name: quicid.elbv2.k8s.aws
+  admissionReviewVersions:
+    - v1beta1
+  namespaceSelector:
+    matchExpressions:
+    
+      - key: elbv2.k8s.aws/quic-server-id-inject
+        operator: In
+        values:
+          - enabled
+    
+  objectSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: NotIn
+      values:
+        - aws-load-balancer-controller
+  rules:
+    - apiGroups:
+        - ""
+      apiVersions:
+        - v1
+      operations:
+        - CREATE
+      resources:
+        - pods
+  sideEffects: None
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /mutate-v1-service
+  failurePolicy: Fail
+  name: mservice.elbv2.k8s.aws
+  admissionReviewVersions:
+  - v1beta1
+  objectSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: NotIn
+      values:
+      - aws-load-balancer-controller
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - services
+  sideEffects: None
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /mutate-alb-target-control-namespace-v1-pod
+  failurePolicy: Fail
+  name: alb-target-control.namespace.elbv2.k8s.aws
+  admissionReviewVersions:
+  - v1beta1
+  namespaceSelector:
+    matchExpressions:
+    - key: elbv2.k8s.aws/alb-target-control-agent-injection
+      operator: In
+      values:
+      - enabled
+  objectSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: NotIn
+      values:
+      - aws-load-balancer-controller
+    - key: elbv2.k8s.aws/alb-target-control-agent-inject
+      operator: NotIn
+      values:
+      - "false"
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+  sideEffects: None
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /mutate-alb-target-control-object-v1-pod
+  failurePolicy: Fail
+  name: alb-target-control.object.elbv2.k8s.aws
+  admissionReviewVersions:
+  - v1beta1
+  namespaceSelector:
+    matchExpressions:
+    - key: elbv2.k8s.aws/alb-target-control-agent-injection
+      operator: DoesNotExist
+  objectSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: NotIn
+      values:
+      - aws-load-balancer-controller
+    - key: elbv2.k8s.aws/alb-target-control-agent-inject
+      operator: In
+      values:
+      - "true"
+  rules:
+  - apiGroups:
+    - ""
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    resources:
+    - pods
+  sideEffects: None
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /mutate-elbv2-k8s-aws-v1beta1-targetgroupbinding
+  failurePolicy: Fail
+  name: mtargetgroupbinding.elbv2.k8s.aws
+  admissionReviewVersions:
+  - v1beta1
+  rules:
+  - apiGroups:
+    - elbv2.k8s.aws
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - targetgroupbindings
+  sideEffects: None
+---
+# Source: aws-load-balancer-controller/templates/webhook.yaml
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: aws-load-balancer-webhook
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    helm.sh/chart: aws-load-balancer-controller-3.2.1
+    app.kubernetes.io/name: aws-load-balancer-controller
+    app.kubernetes.io/instance: aws-load-balancer-controller
+    app.kubernetes.io/version: "v3.2.1"
+webhooks:
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /validate-elbv2-k8s-aws-v1beta1-ingressclassparams
+  failurePolicy: Fail
+  name: vingressclassparams.elbv2.k8s.aws
+  admissionReviewVersions:
+  - v1beta1
+  objectSelector:
+    matchExpressions:
+    - key: app.kubernetes.io/name
+      operator: NotIn
+      values:
+      - aws-load-balancer-controller
+  rules:
+  - apiGroups:
+    - elbv2.k8s.aws
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - ingressclassparams
+  sideEffects: None
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /validate-elbv2-k8s-aws-v1beta1-targetgroupbinding
+  failurePolicy: Fail
+  name: vtargetgroupbinding.elbv2.k8s.aws
+  admissionReviewVersions:
+  - v1beta1
+  rules:
+  - apiGroups:
+    - elbv2.k8s.aws
+    apiVersions:
+    - v1beta1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - targetgroupbindings
+  sideEffects: None
+- clientConfig:
+    caBundle: LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURRRENDQWlpZ0F3SUJBZ0lSQUtDSGVBSkN5T2dtSWE2ZG53OHNmK013RFFZSktvWklodmNOQVFFTEJRQXcKS2pFb01DWUdBMVVFQXhNZllYZHpMV3h2WVdRdFltRnNZVzVqWlhJdFkyOXVkSEp2Ykd4bGNpMWpZVEFlRncweQpOakExTURjd05UVXpNemxhRncwek5qQTFNRFF3TlRVek16bGFNQ294S0RBbUJnTlZCQU1USDJGM2N5MXNiMkZrCkxXSmhiR0Z1WTJWeUxXTnZiblJ5YjJ4c1pYSXRZMkV3Z2dFaU1BMEdDU3FHU0liM0RRRUJBUVVBQTRJQkR3QXcKZ2dFS0FvSUJBUUR0TDBtQnA3YWs1dTRmZ2I4Y3FkbGY3YmwxVHovbW5HUjI2V1ZlSEVWcDlQWVlrY1NPL01adgp6cVVFWlBKc3lBdWVQMGt3cEdsTlllbFBxMVBsSnUzYjFoYWxQank4TVBMd3JPMGtRdGh5UXhLcXlKbHlRSklHClo2WlRtZXhvWmRpOEFCdEpSV1JUazhMZEhPeFQ1aHZ6VVhjZTl2SGthVHVERkVnUk9Rc09tQmtCcmpjQ3QzQmsKSSs3czB1Vm1jcHdMVU85bzVHa1VVaUV6cnIzRUdSOVRaTlBkd0xqL09ueWQrNXIxTEt3MGRHbStPQUE4VkhOeAozNDczNWg2UkNTeXg5dkc3UFRWRjRqL2VKYlFKcmNKalAyQ2ptWEh0eU5IN3pUZkE2TGVabnN1WmEwR3RqY2VMCkJSWHpFOW5NWE1ydnE4YzJwREk2M3dTNlR0VVJaSmt4QWdNQkFBR2pZVEJmTUE0R0ExVWREd0VCL3dRRUF3SUMKcERBZEJnTlZIU1VFRmpBVUJnZ3JCZ0VGQlFjREFRWUlLd1lCQlFVSEF3SXdEd1lEVlIwVEFRSC9CQVV3QXdFQgovekFkQmdOVkhRNEVGZ1FVZWpjS1lQMmVqVGpzb3JyM3BORkZib3l0SUxnd0RRWUpLb1pJaHZjTkFRRUxCUUFECmdnRUJBS2ZzbWRRT1Rmdk5aNGNsUzVoUlBGUWY0eitaUHB0cmMwQ2duMUhud1RqNzNPbXdkd3YrSDFpTktOWXUKTnVtK2hTNmZ0ZjVuZk1OeTM3YVR0dlovN3RGM3JhaVlqMTZWYy9tUmFWVklsS3lvNllNZjBKOUJ2MnJVb0g0UwpBTkNnSDZ5OS9iNEhSMndLa2pSeVl4K3hzZWVVNXpjSU9XYWQ4NnVtS1RQaHJzZ2dyWkkzM1ZJdVEvUi8yWkgwCkFhSUtTaVhKZXcvSEFyVzlWYk9zNDVLbE93eW5RUFRvSFg1STFiOFZIQVVYdEl5QkR5N3FXMVl4bnZFUWt6Y3EKK0VmSm9XZm9NdDRDYzFWalBRSWtSSXFJSFY3eitVZEpjOU9OR29zdldKWG03UTBNWnRqcmRiTldONHpFWENucQpwRnl0RkpTNWZ1S21CU282bFgwRVBXSUxEV0E9Ci0tLS0tRU5EIENFUlRJRklDQVRFLS0tLS0K
+    service:
+      name: aws-load-balancer-webhook-service
+      namespace: kube-system
+      path: /validate-networking-v1-ingress
+  failurePolicy:  Fail
+  matchPolicy: Equivalent
+  name: vingress.elbv2.k8s.aws
+  objectSelector:
+  namespaceSelector:
+  admissionReviewVersions:
+  - v1beta1
+  rules:
+  - apiGroups:
+    - networking.k8s.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - ingresses
+  sideEffects: None
+---
+# Source: aws-load-balancer-controller/templates/ingressclass.yaml
+apiVersion: v1
+kind: List
+metadata:
+  name: ingress-class
+items:
+- apiVersion: elbv2.k8s.aws/v1beta1
+  kind: IngressClassParams
+  metadata:
+    name: alb
+    labels:
+      app.kubernetes.io/managed-by: Helm
+      helm.sh/chart: aws-load-balancer-controller-3.2.1
+      app.kubernetes.io/name: aws-load-balancer-controller
+      app.kubernetes.io/instance: aws-load-balancer-controller
+      app.kubernetes.io/version: "v3.2.1"
+- apiVersion: networking.k8s.io/v1
+  kind: IngressClass
+  metadata:
+    name: alb
+    labels:
+      app.kubernetes.io/managed-by: Helm
+      helm.sh/chart: aws-load-balancer-controller-3.2.1
+      app.kubernetes.io/name: aws-load-balancer-controller
+      app.kubernetes.io/instance: aws-load-balancer-controller
+      app.kubernetes.io/version: "v3.2.1"
+  spec:
+    controller: ingress.k8s.aws/alb

@@ -15,6 +15,7 @@ scripts/
   e2e-test.py                     ← Playwright 端到端测试
 yaml/
   storage-classes.yaml            ← efs-sc + gp3 StorageClass
+  aws-load-balancer-controller.yaml ← ALB controller v3.2.1 (rendered from eks-charts)
   openclaw-crd.yaml               ← OpenClaw CRD (openclawinstances.openclaw.rocks)
   openclaw-operator.yaml          ← OpenClaw Operator v0.26.2
   platform-api.yaml               ← Platform API Deployment + NLB Service
