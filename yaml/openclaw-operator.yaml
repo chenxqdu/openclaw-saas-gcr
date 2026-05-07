@@ -1,3 +1,36 @@
+# openclaw-operator — rendered statically from the upstream Helm chart
+# oci://ghcr.io/openclaw-rocks/charts/openclaw-operator version 0.26.2.
+# Workshop does NOT `helm install` this chart at runtime because CN
+# nodes may not be able to pull from ghcr.io reliably.
+#
+# Placeholders substituted by scripts/step2-k8s-components.sh via sed:
+#   ${ECR_REGISTRY}  — prefixed onto the operator image repository
+#
+# The openclaw CRDs (openclawinstances + openclawselfconfigs) ship as
+# separate files because the rendered CRD yaml is large (~10k lines):
+#   yaml/openclaw-crd.yaml
+#   yaml/openclaw-selfconfig-crd.yaml
+# Step2 applies them before this file so the operator can register
+# its controllers on startup.
+#
+# To refresh after an upstream chart bump:
+#   helm pull oci://ghcr.io/openclaw-rocks/charts/openclaw-operator --version <new-ver>
+#   # workload (SA/RBAC/Service/Deployment)
+#   helm template openclaw-operator ./openclaw-operator-<new-ver>.tgz \
+#     --namespace openclaw-operator-system \
+#     --set leaderElection.enabled=true \
+#     --set crds.install=false \
+#     --set image.repository=PLACEHOLDER_ECR_REGISTRY/openclaw-rocks/openclaw-operator \
+#     --set image.tag=v<new-ver> \
+#     | sed 's|PLACEHOLDER_ECR_REGISTRY|${ECR_REGISTRY}|g' \
+#     > yaml/openclaw-operator.yaml
+#   # CRDs (extract from the chart tarball)
+#   tar xzf ./openclaw-operator-<new-ver>.tgz -C /tmp
+#   cp /tmp/openclaw-operator/templates/crds/openclaw.rocks_openclawinstances.yaml \
+#      yaml/openclaw-crd.yaml
+#   cp /tmp/openclaw-operator/templates/crds/openclaw.rocks_openclawselfconfigs.yaml \
+#      yaml/openclaw-selfconfig-crd.yaml
+#
 ---
 # Source: openclaw-operator/templates/serviceaccount.yaml
 apiVersion: v1
