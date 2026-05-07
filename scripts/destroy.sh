@@ -242,15 +242,19 @@ if [ "$KUBECTL_OK" = "true" ]; then
   log "[2.2] Deleting OpenClaw CRDs..."
   if [ "$DRY_RUN" != "true" ]; then
     # Force-clear finalizers on any leftover CRs (defense in depth —
-    # [2.0] should have removed all CRs already)
+    # [2.0] should have removed all CRs already). The pipeline has to
+    # tolerate all three failure modes because `set -o pipefail` is
+    # on: (a) CRD absent → kubectl get exits 1; (b) no CR instances →
+    # .items is empty; (c) jq missing on older IDEs.
     for crd in openclawinstances.openclaw.rocks openclawselfconfigs.openclaw.rocks; do
-      kubectl get "$crd" --all-namespaces -o json 2>/dev/null \
-        | jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' 2>/dev/null \
-        | while read -r ns name; do
-            [ -z "$name" ] && continue
-            kubectl -n "$ns" patch "$crd" "$name" --type=merge \
-              -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true
-          done
+      { kubectl get "$crd" --all-namespaces -o json 2>/dev/null \
+          | jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' 2>/dev/null \
+          | while read -r ns name; do
+              [ -z "$name" ] && continue
+              kubectl -n "$ns" patch "$crd" "$name" --type=merge \
+                -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true
+            done
+      } || true
     done
     kubectl delete crd openclawinstances.openclaw.rocks openclawselfconfigs.openclaw.rocks --ignore-not-found --timeout=60s 2>/dev/null || true
   else
