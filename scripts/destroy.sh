@@ -11,6 +11,8 @@ STACK_NAME="${STACK_NAME:-openclaw-cn-workshop}"
 REGION="${REGION:-cn-northwest-1}"
 CLUSTER_NAME="${CLUSTER_NAME:-openclaw-cn-workshop}"
 DRY_RUN="${DRY_RUN:-false}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+YAML_DIR="${SCRIPT_DIR}/../yaml"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -63,10 +65,6 @@ aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" 2>/dev/null 
 KUBECTL_OK=true
 kubectl cluster-info &>/dev/null || KUBECTL_OK=false
 
-# Agent-sandbox release version — must match what step4 applied.
-# Used below to delete the upstream manifests.
-AGENT_SANDBOX_VERSION="${AGENT_SANDBOX_VERSION:-v0.3.10}"
-
 ########################################
 # Step 4: Hermes Sandbox + Karpenter teardown
 # (runs first so Karpenter-provisioned nodes drain
@@ -104,12 +102,18 @@ if [ "$KUBECTL_OK" = "true" ]; then
 
     log "[4.3] Uninstalling agent-sandbox controller + CRDs..."
     if [ "$DRY_RUN" != "true" ]; then
-      curl -fsSL "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}/extensions.yaml" \
-        | kubectl delete --ignore-not-found -f - 2>/dev/null || true
-      curl -fsSL "https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}/manifest.yaml" \
-        | kubectl delete --ignore-not-found -f - 2>/dev/null || true
+      # Use vendored yaml (yaml/agent-sandbox-*.yaml). The ECR_REGISTRY
+      # placeholder in those files expands to any non-empty value here —
+      # kubectl delete matches resources by name, not image, so the
+      # registry value is irrelevant for the delete operation.
+      for f in "${YAML_DIR}/agent-sandbox-extensions.yaml" "${YAML_DIR}/agent-sandbox-manifest.yaml"; do
+        if [ -f "$f" ]; then
+          sed "s|\${ECR_REGISTRY}|placeholder|g" "$f" \
+            | kubectl delete --ignore-not-found -f - 2>/dev/null || true
+        fi
+      done
     else
-      echo "  (dry-run) kubectl delete -f agent-sandbox manifests (${AGENT_SANDBOX_VERSION})"
+      echo "  (dry-run) kubectl delete -f yaml/agent-sandbox-{manifest,extensions}.yaml"
     fi
 
     log "[4.4] Uninstalling Karpenter..."

@@ -29,9 +29,10 @@ AGENT_SANDBOX_VERSION="${AGENT_SANDBOX_VERSION:-v0.3.10}"
 HERMES_IMAGE="${HERMES_IMAGE:-${ECR_REGISTRY}/nousresearch/hermes-agent:latest}"
 
 # Agent-sandbox controller image — upstream publishes to registry.k8s.io
-# which is unreliable from CN nodes. We mirror it and rewrite the
-# manifest.yaml on apply.
-AGENT_SANDBOX_CONTROLLER_IMAGE="${AGENT_SANDBOX_CONTROLLER_IMAGE:-${ECR_REGISTRY}/agent-sandbox/agent-sandbox-controller:${AGENT_SANDBOX_VERSION}}"
+# which is unreachable from CN nodes. We ship yaml/agent-sandbox-*.yaml
+# pre-rewritten to `${ECR_REGISTRY}/agent-sandbox/agent-sandbox-controller:<ver>`
+# and run envsubst on apply (see [4/5] below). Override ECR_REGISTRY
+# above to redirect to a private mirror.
 
 # LiteLLM proxy endpoint (user-hosted). base_url form: https://host[/path]
 LITELLM_BASE_URL="${LITELLM_BASE_URL:?must set LITELLM_BASE_URL, e.g. https://litellm.example.com}"
@@ -181,21 +182,20 @@ NODEPOOL_EOF
 # ---- [4/5] Install Agent Sandbox controller ----
 echo ""
 echo ">>> [4/5] Installing Agent Sandbox ${AGENT_SANDBOX_VERSION}..."
-# The upstream manifest hardcodes registry.k8s.io/agent-sandbox/...
-# Rewrite the controller image to our mirror before applying.
-upstream_manifest="https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}/manifest.yaml"
-upstream_ext="https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}/extensions.yaml"
-
-# Both manifest.yaml AND extensions.yaml pin the controller image —
-# extensions.yaml re-declares the same Deployment with the upstream
-# image, so it clobbers manifest.yaml's patched copy if not rewritten.
-curl -fsSL "$upstream_manifest" \
-  | sed "s|registry.k8s.io/agent-sandbox/agent-sandbox-controller:${AGENT_SANDBOX_VERSION}|${AGENT_SANDBOX_CONTROLLER_IMAGE}|g" \
-  | kubectl apply --server-side --force-conflicts --timeout=120s -f -
-
-curl -fsSL "$upstream_ext" \
-  | sed "s|registry.k8s.io/agent-sandbox/agent-sandbox-controller:${AGENT_SANDBOX_VERSION}|${AGENT_SANDBOX_CONTROLLER_IMAGE}|g" \
-  | kubectl apply --server-side --force-conflicts --timeout=60s -f -
+# Both manifests carry the controller image as a ${ECR_REGISTRY}
+# placeholder (see yaml/agent-sandbox-*.yaml). Upstream ships both —
+# extensions.yaml re-declares the same Deployment so we must apply the
+# same registry substitution to both, otherwise the second apply
+# clobbers the first with the upstream registry.k8s.io reference.
+# To refresh these files from upstream:
+#   curl -fsSL https://github.com/kubernetes-sigs/agent-sandbox/releases/download/<ver>/manifest.yaml \
+#     | sed 's|registry.k8s.io/agent-sandbox/agent-sandbox-controller:<ver>|${ECR_REGISTRY}/agent-sandbox/agent-sandbox-controller:<ver>|g' \
+#     > yaml/agent-sandbox-manifest.yaml
+# (same for extensions.yaml)
+for f in "${YAML_DIR}/agent-sandbox-manifest.yaml" "${YAML_DIR}/agent-sandbox-extensions.yaml"; do
+  sed "s|\${ECR_REGISTRY}|${ECR_REGISTRY}|g" "$f" \
+    | kubectl apply --server-side --force-conflicts --timeout=120s -f -
+done
 
 # Wait for the controller deployment (name may vary between releases — just wait
 # for any deployment in the agent-sandbox-system namespace to roll out).
