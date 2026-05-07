@@ -320,27 +320,43 @@ else
   warn "kubectl not available, skipping K8s resource cleanup"
 fi
 
-# Pod Identity Associations (AWS API, works regardless of kubectl)
-log "[2.6] Deleting Pod Identity Associations..."
-ASSOCIATIONS=$(aws eks list-pod-identity-associations \
-  --cluster-name "$CLUSTER_NAME" --region "$REGION" \
-  --query 'associations[*].associationId' --output text 2>/dev/null || echo "")
+# Pod Identity Associations — delete ONLY the ones step3 explicitly
+# created. Others stay:
+#   - efs-csi-controller-sa (created as part of step2's
+#     `aws eks create-addon aws-efs-csi-driver`) is owned by that
+#     addon and gets cleaned up automatically by
+#     `aws eks delete-addon` ([2.5] above).
+#   - ebs-csi-controller-sa (created by the CFN EBS CSI addon in
+#     Step 1) is owned by CloudFormation; leave it to CFN stack
+#     delete so the IaC ownership stays intact.
+log "[2.6] Deleting script-created Pod Identity Associations..."
+# Each entry: "<namespace>:<serviceAccount>" — matches associations
+# whose ns+SA pair is in this list.
+OWNED_ASSOCS=(
+  "openclaw-platform:platform-api"
+)
 
-if [ -n "$ASSOCIATIONS" ] && [ "$ASSOCIATIONS" != "None" ]; then
-  for assoc_id in $ASSOCIATIONS; do
-    if [ "$DRY_RUN" != "true" ]; then
-      aws eks delete-pod-identity-association \
-        --cluster-name "$CLUSTER_NAME" \
-        --association-id "$assoc_id" \
-        --region "$REGION" 2>/dev/null || true
-      echo "  Deleted: $assoc_id"
-    else
-      echo "  (dry-run) delete association: $assoc_id"
-    fi
-  done
-else
-  echo "  No associations found"
-fi
+for entry in "${OWNED_ASSOCS[@]}"; do
+  ns="${entry%:*}"
+  sa="${entry#*:}"
+  assoc_id=$(aws eks list-pod-identity-associations \
+    --cluster-name "$CLUSTER_NAME" --region "$REGION" \
+    --namespace "$ns" --service-account "$sa" \
+    --query 'associations[0].associationId' --output text 2>/dev/null || echo "None")
+  if [ -z "$assoc_id" ] || [ "$assoc_id" = "None" ]; then
+    echo "  $ns/$sa: no association (skip)"
+    continue
+  fi
+  if [ "$DRY_RUN" != "true" ]; then
+    aws eks delete-pod-identity-association \
+      --cluster-name "$CLUSTER_NAME" \
+      --association-id "$assoc_id" \
+      --region "$REGION" 2>/dev/null || true
+    echo "  $ns/$sa: deleted ($assoc_id)"
+  else
+    echo "  (dry-run) $ns/$sa: would delete ($assoc_id)"
+  fi
+done
 
 ########################################
 # Step 1: CloudFormation stack deletion
