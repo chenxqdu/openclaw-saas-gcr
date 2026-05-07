@@ -20,11 +20,11 @@ ECR_REGISTRY="${ECR_REGISTRY:-public.ecr.aws/i4x4j7g8/openclaw-saas}"
 
 # Per-component image defaults (override each via env var if needed).
 PLATFORM_REPO="${PLATFORM_REPO:-openclaw-saas-platform}"
-PLATFORM_TAG="${PLATFORM_TAG:-v0.9.61}"
+PLATFORM_TAG="${PLATFORM_TAG:-v0.9.62}"
 BILLING_REPO="${BILLING_REPO:-openclaw-saas-billing-consumer}"
-BILLING_TAG="${BILLING_TAG:-v0.1.1}"
+BILLING_TAG="${BILLING_TAG:-v0.1.2}"
 METRICS_EXPORTER_REPO="${METRICS_EXPORTER_REPO:-openclaw-saas-metrics-exporter}"
-METRICS_EXPORTER_TAG="${METRICS_EXPORTER_TAG:-v0.3.1}"
+METRICS_EXPORTER_TAG="${METRICS_EXPORTER_TAG:-v0.3.3}"
 DEFAULT_AGENT_IMAGE="${DEFAULT_AGENT_IMAGE:-openclaw-custom}"
 DEFAULT_AGENT_IMAGE_TAG="${DEFAULT_AGENT_IMAGE_TAG:-2026.4.14}"
 

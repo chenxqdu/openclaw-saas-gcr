@@ -238,9 +238,9 @@ bash scripts/destroy.sh
 
 | 镜像 | Tag | 用途 |
 |------|-----|------|
-| `openclaw-saas-platform` | `v0.9.61` | Platform API |
-| `openclaw-saas-billing-consumer` | `v0.1.1` | Billing Consumer |
-| `openclaw-saas-metrics-exporter` | `v0.3.1` | Metrics Exporter Sidecar |
+| `openclaw-saas-platform` | `v0.9.62` | Platform API |
+| `openclaw-saas-billing-consumer` | `v0.1.2` | Billing Consumer |
+| `openclaw-saas-metrics-exporter` | `v0.3.3` | Metrics Exporter Sidecar |
 | `openclaw-rocks/openclaw-operator` | `v0.26.2` | OpenClaw Operator |
 | `openclaw/openclaw` | `2026.4.14` | Agent Runtime (operator 默认) |
 | `openclaw-custom` | `2026.4.14` | Agent Runtime (workshop 默认，含 kiro-cli/acpx) |

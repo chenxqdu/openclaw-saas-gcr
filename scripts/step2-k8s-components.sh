@@ -183,7 +183,7 @@ spec:
             ${ECR_REGISTRY}/nginx:1.27-alpine \\
             ${ECR_REGISTRY}/busybox:1.37 \\
             ${ECR_REGISTRY}/otel/opentelemetry-collector:0.120.0 \\
-            ${ECR_REGISTRY}/openclaw-saas-metrics-exporter:v0.3.1 ; do
+            ${ECR_REGISTRY}/openclaw-saas-metrics-exporter:v0.3.3 ; do
             echo "-> pulling \$image"
             ctr -n k8s.io images pull "\$image" 2>&1 | tail -1
           done
