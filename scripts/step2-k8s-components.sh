@@ -90,10 +90,13 @@ sed -e "s|\${CLUSTER_NAME}|$CLUSTER_NAME|g" \
 
 # Pass 1: everything except IngressClassParams applies. The one
 # expected failure line is filtered out so `set -e` does not abort.
+# Plain pipe + `|| true` is enough; no `tee /dev/stderr` because some
+# restricted runtimes (EKS IDE pod) expose /dev/stderr as a 400 symlink,
+# which makes tee fail with "Permission denied".
 echo "  Pass 1/2 (CRDs register; IngressClassParams object is expected to miss on first pass)..."
-{ kubectl apply --server-side --force-conflicts -f "$RENDERED_ALB" 2>&1 \
-    | grep -vE 'no matches for kind "IngressClassParams"' \
-    || true; } | tee /dev/stderr > /dev/null
+kubectl apply --server-side --force-conflicts -f "$RENDERED_ALB" 2>&1 \
+  | grep -vE 'no matches for kind "IngressClassParams"' \
+  || true
 
 # Wait for the ALB CRDs to become Established before re-applying.
 for crd in ingressclassparams.elbv2.k8s.aws targetgroupbindings.elbv2.k8s.aws; do
