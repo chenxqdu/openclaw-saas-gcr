@@ -31,7 +31,7 @@ HERMES_IMAGE="${HERMES_IMAGE:-${ECR_REGISTRY}/nousresearch/hermes-agent:latest}"
 # Agent-sandbox controller image — upstream publishes to registry.k8s.io
 # which is unreachable from CN nodes. We ship yaml/agent-sandbox-*.yaml
 # pre-rewritten to `${ECR_REGISTRY}/agent-sandbox/agent-sandbox-controller:<ver>`
-# and run envsubst on apply (see [4/5] below). Override ECR_REGISTRY
+# and sed-substitute on apply (see [4/5] below). Override ECR_REGISTRY
 # above to redirect to a private mirror.
 
 # LiteLLM proxy endpoint (user-hosted). base_url form: https://host[/path]
@@ -224,10 +224,15 @@ kubectl -n hermes create secret generic hermes-feishu \
   --from-literal=app-secret="$FEISHU_APP_SECRET" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# ConfigMap and Sandbox CRD — both templated with envsubst.
-export HERMES_MODEL LITELLM_BASE_URL HERMES_IMAGE
-envsubst < "${YAML_DIR}/hermes-config.yaml.tpl" | kubectl apply -f -
-envsubst < "${YAML_DIR}/hermes-sandbox.yaml.tpl" | kubectl apply -f -
+# ConfigMap + Sandbox CRD: ${VAR} placeholders substituted by sed
+# (matches the style used by step2/step3 against yaml/*.yaml — no
+# envsubst/gettext dependency needed).
+sed -e "s|\${HERMES_MODEL}|${HERMES_MODEL}|g" \
+    -e "s|\${LITELLM_BASE_URL}|${LITELLM_BASE_URL}|g" \
+    "${YAML_DIR}/hermes-config.yaml" | kubectl apply -f -
+
+sed -e "s|\${HERMES_IMAGE}|${HERMES_IMAGE}|g" \
+    "${YAML_DIR}/hermes-sandbox.yaml" | kubectl apply -f -
 
 echo ""
 echo "============================================"

@@ -18,8 +18,10 @@ yaml/
   openclaw-crd.yaml               ← OpenClaw CRD (openclawinstances.openclaw.rocks)
   openclaw-operator.yaml          ← OpenClaw Operator v0.26.2
   platform-api.yaml               ← Platform API Deployment + NLB Service
-  hermes-config.yaml.tpl          ← Step 4: Hermes ConfigMap 模板
-  hermes-sandbox.yaml.tpl         ← Step 4: Hermes Sandbox CRD 模板
+  hermes-config.yaml              ← Step 4: Hermes ConfigMap (${VAR} placeholders)
+  hermes-sandbox.yaml             ← Step 4: Hermes Sandbox CRD (${VAR} placeholders)
+  agent-sandbox-manifest.yaml     ← Step 4: agent-sandbox controller (vendored v0.3.10)
+  agent-sandbox-extensions.yaml   ← Step 4: agent-sandbox extensions CRDs
 ```
 
 ## 前置条件
