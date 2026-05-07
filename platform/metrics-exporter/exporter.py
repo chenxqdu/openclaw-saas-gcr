@@ -1,4 +1,5 @@
 """Metrics exporter: scrapes otel-collector Prometheus endpoint, computes deltas, pushes to SQS."""
+import re
 import time
 import urllib.request
 from typing import Dict, Optional
@@ -6,51 +7,61 @@ from config import Config
 from sqs_pusher import SQSPusher
 
 
-# Metrics we care about for billing (all are counters → monotonically increasing)
+# openclaw.tokens counter is exported with an `openclaw_token` label whose value
+# is one of input/output/cache_read/cache_write/prompt/total. The earlier
+# implementation summed across label values, producing a single inflated counter
+# and leaving input_tokens/output_tokens permanently at 0 in SQS events. We now
+# split by label: `openclaw_tokens_total` + {openclaw_token="input"} rekeys to
+# `openclaw_tokens_input` internally.
+TOKEN_METRIC_NAMES = {"openclaw_tokens", "openclaw_tokens_total"}
+
 BILLING_METRICS = {
-    "openclaw_tokens_input_total",
-    "openclaw_tokens_output_total",
-    "openclaw_tokens_cache_read_total",
-    "openclaw_tokens_cache_write_total",
-    "openclaw_tokens_total_total",
     "openclaw_cost_usd_total",
-    "openclaw_message_processed_total",
-    # Also try without _total suffix (depends on otel-collector version)
-    "openclaw_tokens_input",
-    "openclaw_tokens_output",
-    "openclaw_tokens_cache_read",
-    "openclaw_tokens_cache_write",
-    "openclaw_tokens_total",
     "openclaw_cost_usd",
+    "openclaw_message_processed_total",
     "openclaw_message_processed",
 }
 
+_LABEL_RE = re.compile(r'([a-zA-Z_][a-zA-Z0-9_]*)="((?:[^"\\]|\\.)*)"')
+
+
+def _parse_labels(label_str: str) -> Dict[str, str]:
+    return {m.group(1): m.group(2) for m in _LABEL_RE.finditer(label_str)}
+
 
 def parse_prometheus_text(text: str) -> Dict[str, float]:
-    """Parse Prometheus text exposition format into {metric_name: value}.
+    """Parse Prometheus text exposition format into {metric_key: value}.
 
-    For simplicity, we sum across all label combinations per metric name.
-    This works because each agent pod has exactly one tenant+agent.
+    For openclaw.tokens, split by the `openclaw_token` label so that
+    `openclaw_tokens_total{openclaw_token="input"} 18719` becomes
+    `openclaw_tokens_input` → 18719 (and similarly for output/cache_read/...).
+    For other BILLING_METRICS, sum across label combinations.
     """
     metrics: Dict[str, float] = {}
     for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
-        # Format: metric_name{labels} value [timestamp]
-        # or:     metric_name value [timestamp]
         try:
-            parts = line.split()
+            parts = line.split(None, 1)
             if len(parts) < 2:
                 continue
-            name_with_labels = parts[0]
-            value = float(parts[1])
+            name_with_labels, rest = parts[0], parts[1]
+            value = float(rest.split()[0])
 
-            # Extract base metric name (strip {labels})
-            name = name_with_labels.split("{")[0]
+            if "{" in name_with_labels:
+                name, label_str = name_with_labels.split("{", 1)
+                label_str = label_str.rstrip("}")
+            else:
+                name, label_str = name_with_labels, ""
 
-            if name in BILLING_METRICS:
-                # Sum across label combinations
+            if name in TOKEN_METRIC_NAMES:
+                token = _parse_labels(label_str).get("openclaw_token")
+                if not token:
+                    continue
+                key = f"openclaw_tokens_{token}"
+                metrics[key] = metrics.get(key, 0.0) + value
+            elif name in BILLING_METRICS:
                 metrics[name] = metrics.get(name, 0.0) + value
         except (ValueError, IndexError):
             continue
@@ -120,19 +131,22 @@ class MetricsExporter:
                     return deltas[n]
             return 0
 
-        input_tokens = get_delta("openclaw_tokens_input_total", "openclaw_tokens_input")
-        output_tokens = get_delta("openclaw_tokens_output_total", "openclaw_tokens_output")
-        cache_read = get_delta("openclaw_tokens_cache_read_total", "openclaw_tokens_cache_read")
-        cache_write = get_delta("openclaw_tokens_cache_write_total", "openclaw_tokens_cache_write")
-        total_tokens = get_delta("openclaw_tokens_total_total", "openclaw_tokens_total")
+        input_tokens = get_delta("openclaw_tokens_input")
+        output_tokens = get_delta("openclaw_tokens_output")
+        cache_read = get_delta("openclaw_tokens_cache_read")
+        cache_write = get_delta("openclaw_tokens_cache_write")
+        total_tokens = get_delta("openclaw_tokens_total")
         cost_usd = get_delta("openclaw_cost_usd_total", "openclaw_cost_usd")
         messages = get_delta("openclaw_message_processed_total", "openclaw_message_processed")
 
         if total_tokens == 0 and input_tokens == 0 and output_tokens == 0:
             return  # Nothing meaningful
 
-        model = labels.get("openclaw.model", labels.get("model", "unknown"))
-        provider = labels.get("openclaw.provider", labels.get("provider", "unknown"))
+        # otel-collector's Prometheus exporter replaces "." with "_" in attribute
+        # keys: openclaw.model -> openclaw_model. Fall back to the dotted form
+        # for exporters that don't do the rewrite, then to un-namespaced.
+        model = labels.get("openclaw_model", labels.get("openclaw.model", labels.get("model", "unknown")))
+        provider = labels.get("openclaw_provider", labels.get("openclaw.provider", labels.get("provider", "unknown")))
 
         event = {
             "tenant": Config.TENANT_NAME,
