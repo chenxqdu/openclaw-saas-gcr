@@ -545,8 +545,6 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ClusterName}-cluster-sg'
-        - Key: karpenter.sh/discovery
-          Value: !Ref ClusterName
 
   ClusterSGIngressFromIde:
     Type: AWS::EC2::SecurityGroupIngress
@@ -565,6 +563,45 @@ Resources:
       Description: Allow all traffic from VPC CIDR (applies to EKS-managed cluster SG on nodes)
       IpProtocol: "-1"
       CidrIp: !Ref VpcCIDR
+
+  # KarpenterNodeSecurityGroup is attached to Karpenter-provisioned
+  # nodes (via EC2NodeClass.securityGroupSelectorTerms matching
+  # karpenter.sh/discovery). It is NOT the EKS-managed cluster SG —
+  # that one is attached automatically to managed node groups and
+  # cannot be tagged declaratively from CloudFormation. Karpenter
+  # reads this tag to discover the right SG when launching new nodes.
+  #
+  # Ingress allows anything from within the VPC so Karpenter pods can
+  # freely talk to standard-nodes (kube-dns, platform-api NLB, etc.)
+  # and vice versa. The EKS-managed cluster SG already accepts VPC
+  # CIDR traffic via ClusterNGSGIngressFromVPC above, so the reverse
+  # direction works too.
+  KarpenterNodeSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub 'Security group for Karpenter-managed nodes in ${ClusterName}'
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${ClusterName}-karpenter-node-sg'
+        - Key: karpenter.sh/discovery
+          Value: !Ref ClusterName
+
+  KarpenterNodeSGIngressFromVPC:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref KarpenterNodeSecurityGroup
+      Description: Allow all traffic from within the VPC (cluster-local pod + kubelet traffic)
+      IpProtocol: "-1"
+      CidrIp: !Ref VpcCIDR
+
+  KarpenterNodeSGIngressFromCluster:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref KarpenterNodeSecurityGroup
+      Description: Allow all traffic from the EKS-managed cluster SG (control plane + other nodes)
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !GetAtt EKSCluster.ClusterSecurityGroupId
 
   EKSCluster:
     Type: AWS::EKS::Cluster
@@ -1272,7 +1309,7 @@ Resources:
                   "Effect": "Allow",
                   "Action": "iam:PassRole",
                   "Resource": "${NodeRoleArn}",
-                  "Condition": { "StringEquals": { "iam:PassedToService": "ec2.amazonaws.com" } }
+                  "Condition": { "StringEquals": { "iam:PassedToService": ["ec2.amazonaws.com", "ec2.amazonaws.com.cn"] } }
                 },
                 {
                   "Sid": "AllowScopedInstanceProfileCreationActions",
@@ -1317,6 +1354,15 @@ Resources:
                   "Sid": "AllowInstanceProfileReadActions",
                   "Effect": "Allow",
                   "Action": "iam:GetInstanceProfile",
+                  "Resource": "*"
+                },
+                {
+                  "Sid": "AllowListInstanceProfiles",
+                  "Effect": "Allow",
+                  "Action": [
+                    "iam:ListInstanceProfiles",
+                    "iam:ListInstanceProfilesForRole"
+                  ],
                   "Resource": "*"
                 },
                 {

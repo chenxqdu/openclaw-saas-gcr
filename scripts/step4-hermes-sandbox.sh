@@ -81,6 +81,23 @@ echo "  Interruption queue: $KARPENTER_INTERRUPTION_QUEUE"
 # Ensure kubeconfig points at the workshop cluster.
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" >/dev/null
 
+# EC2NodeClass selects the KarpenterNodeSecurityGroup by its
+# karpenter.sh/discovery tag, which CFN provisions in Step 1.
+# If the tag is missing, the CFN template is out of date —
+# fail fast rather than quietly falling back to a wrong SG.
+KARPENTER_NODE_SG=$(aws ec2 describe-security-groups --region "$REGION" \
+  --filters "Name=tag:karpenter.sh/discovery,Values=${CLUSTER_NAME}" "Name=vpc-id,Values=$(
+    aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" --query 'cluster.resourcesVpcConfig.vpcId' --output text
+  )" \
+  --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")
+if [ -z "$KARPENTER_NODE_SG" ] || [ "$KARPENTER_NODE_SG" = "None" ]; then
+  echo "ERROR: no security group with tag karpenter.sh/discovery=${CLUSTER_NAME} found."
+  echo "       CFN stack ${STACK_NAME} must declare KarpenterNodeSecurityGroup."
+  echo "       Run 'aws cloudformation update-stack' with the latest template and retry."
+  exit 1
+fi
+echo "  Karpenter node SG (discovery target): $KARPENTER_NODE_SG"
+
 # ---- [2/5] Install Karpenter (Helm, OCI chart) ----
 echo ""
 echo ">>> [2/5] Installing Karpenter ${KARPENTER_VERSION}..."
@@ -169,11 +186,15 @@ echo ">>> [4/5] Installing Agent Sandbox ${AGENT_SANDBOX_VERSION}..."
 upstream_manifest="https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}/manifest.yaml"
 upstream_ext="https://github.com/kubernetes-sigs/agent-sandbox/releases/download/${AGENT_SANDBOX_VERSION}/extensions.yaml"
 
+# Both manifest.yaml AND extensions.yaml pin the controller image —
+# extensions.yaml re-declares the same Deployment with the upstream
+# image, so it clobbers manifest.yaml's patched copy if not rewritten.
 curl -fsSL "$upstream_manifest" \
   | sed "s|registry.k8s.io/agent-sandbox/agent-sandbox-controller:${AGENT_SANDBOX_VERSION}|${AGENT_SANDBOX_CONTROLLER_IMAGE}|g" \
   | kubectl apply --server-side --force-conflicts --timeout=120s -f -
 
 curl -fsSL "$upstream_ext" \
+  | sed "s|registry.k8s.io/agent-sandbox/agent-sandbox-controller:${AGENT_SANDBOX_VERSION}|${AGENT_SANDBOX_CONTROLLER_IMAGE}|g" \
   | kubectl apply --server-side --force-conflicts --timeout=60s -f -
 
 # Wait for the controller deployment (name may vary between releases — just wait
