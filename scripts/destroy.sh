@@ -147,10 +147,14 @@ echo "  Step 3: Removing Platform API"
 echo "============================================"
 
 if [ "$KUBECTL_OK" = "true" ]; then
-  # Delete NLB service first (takes time to deprovision)
+  # Delete NLB service first — the load-balancer-controller / cloud
+  # provider needs to deregister targets, remove listeners, and
+  # deprovision the NLB itself before the k8s Service delete returns.
+  # In cn-northwest-1 this commonly takes 90-120s; 60s caused orphan
+  # NLBs that later blocked VPC deletion.
   log "[3.1] Deleting Platform API service (NLB)..."
   if [ "$DRY_RUN" != "true" ]; then
-    kubectl delete svc platform-api -n openclaw-platform --ignore-not-found --timeout=60s 2>/dev/null || true
+    kubectl delete svc platform-api -n openclaw-platform --ignore-not-found --timeout=180s 2>/dev/null || true
   else
     echo "  (dry-run) kubectl delete svc platform-api -n openclaw-platform"
   fi
@@ -234,7 +238,6 @@ if [ "$KUBECTL_OK" = "true" ]; then
   log "[2.1] Deleting OpenClaw Operator..."
   if [ "$DRY_RUN" != "true" ]; then
     kubectl delete daemonset cn-image-prepull -n kube-system --ignore-not-found 2>/dev/null || true
-    kubectl delete daemonset cn-image-retag -n kube-system --ignore-not-found 2>/dev/null || true
     kubectl delete job -n kube-system -l app=cn-image-prepull --ignore-not-found 2>/dev/null || true
     kubectl delete deployment openclaw-operator -n openclaw-operator-system --ignore-not-found --timeout=60s 2>/dev/null || true
     kubectl delete sa openclaw-operator -n openclaw-operator-system --ignore-not-found 2>/dev/null || true
@@ -277,20 +280,41 @@ if [ "$KUBECTL_OK" = "true" ]; then
     echo "  (dry-run) kubectl delete sc efs-sc gp3"
   fi
 
-  # ALB Controller (Helm)
-  log "[2.4] Uninstalling ALB Controller..."
+  # ALB Controller — installed by step2 via `kubectl apply -f yaml/
+  # aws-load-balancer-controller.yaml` (not Helm). Delete the same
+  # yaml to tear down the Deployment, RBAC, Service, webhooks, 7 CRDs,
+  # and the IngressClass/IngressClassParams List. Placeholder values
+  # are irrelevant for delete — kubectl matches by name/kind, not
+  # image ref.
+  log "[2.4] Deleting ALB Controller (yaml/aws-load-balancer-controller.yaml)..."
   if [ "$DRY_RUN" != "true" ]; then
-    helm uninstall aws-load-balancer-controller -n kube-system --wait --timeout 120s 2>/dev/null || true
+    if [ -f "${YAML_DIR}/aws-load-balancer-controller.yaml" ]; then
+      sed -e 's|${CLUSTER_NAME}|placeholder|g' \
+          -e 's|${ALB_CONTROLLER_ROLE_ARN}|placeholder|g' \
+          -e 's|${REGION}|placeholder|g' \
+          -e 's|${VPC_ID}|placeholder|g' \
+          "${YAML_DIR}/aws-load-balancer-controller.yaml" \
+        | kubectl delete --ignore-not-found -f - 2>/dev/null || true
+    else
+      # Fallback for older deployments that used helm
+      helm uninstall aws-load-balancer-controller -n kube-system --wait --timeout 120s 2>/dev/null || true
+    fi
   else
-    echo "  (dry-run) helm uninstall aws-load-balancer-controller"
+    echo "  (dry-run) kubectl delete -f yaml/aws-load-balancer-controller.yaml"
   fi
 
-  # EFS CSI Driver (Helm)
-  log "[2.5] Uninstalling EFS CSI Driver..."
+  # EFS CSI Driver — installed by step2 as an EKS-managed addon
+  # (`aws eks create-addon`), not Helm. Delete via the same API.
+  log "[2.5] Deleting EFS CSI Driver (EKS addon)..."
   if [ "$DRY_RUN" != "true" ]; then
-    helm uninstall aws-efs-csi-driver -n kube-system --wait --timeout 120s 2>/dev/null || true
+    aws eks delete-addon \
+      --cluster-name "$CLUSTER_NAME" \
+      --addon-name aws-efs-csi-driver \
+      --region "$REGION" 2>/dev/null || true
+    # Also try Helm uninstall as a fallback for legacy deploys.
+    helm uninstall aws-efs-csi-driver -n kube-system --wait --timeout 60s 2>/dev/null || true
   else
-    echo "  (dry-run) helm uninstall aws-efs-csi-driver"
+    echo "  (dry-run) aws eks delete-addon --addon-name aws-efs-csi-driver"
   fi
 else
   warn "kubectl not available, skipping K8s resource cleanup"
