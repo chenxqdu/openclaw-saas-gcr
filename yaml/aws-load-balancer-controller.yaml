@@ -4,7 +4,7 @@
 # CN EKS IDE cannot reach aws.github.io (GFW resets the TLS handshake).
 #
 # Placeholders substituted by scripts/step2-k8s-components.sh via sed:
-#   ${CLUSTER_NAME}, ${ALB_CONTROLLER_ROLE_ARN}
+#   ${CLUSTER_NAME}, ${REGION}, ${VPC_ID}, ${ALB_CONTROLLER_ROLE_ARN}
 #
 # To refresh after an upstream chart bump:
 #   helm repo add eks https://aws.github.io/eks-charts  (from a network with github.io access)
@@ -16,8 +16,12 @@
 #     --set serviceAccount.create=true \
 #     --set serviceAccount.name=aws-load-balancer-controller \
 #     --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=PLACEHOLDER_ALB_CONTROLLER_ROLE_ARN" \
+#     --set region=PLACEHOLDER_REGION \
+#     --set vpcId=PLACEHOLDER_VPC_ID \
 #     | sed -e 's|PLACEHOLDER_CLUSTER_NAME|${CLUSTER_NAME}|g' \
 #           -e 's|PLACEHOLDER_ALB_CONTROLLER_ROLE_ARN|${ALB_CONTROLLER_ROLE_ARN}|g' \
+#           -e 's|PLACEHOLDER_REGION|${REGION}|g' \
+#           -e 's|PLACEHOLDER_VPC_ID|${VPC_ID}|g' \
 #     > yaml/aws-load-balancer-controller.yaml
 #
 ---

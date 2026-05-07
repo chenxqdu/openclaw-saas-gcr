@@ -75,6 +75,8 @@ echo ""
 echo ">>> [2/5] Installing ALB Controller (yaml/aws-load-balancer-controller.yaml)..."
 sed -e "s|\${CLUSTER_NAME}|$CLUSTER_NAME|g" \
     -e "s|\${ALB_CONTROLLER_ROLE_ARN}|$ALB_CONTROLLER_ROLE_ARN|g" \
+    -e "s|\${REGION}|$REGION|g" \
+    -e "s|\${VPC_ID}|$VPC_ID|g" \
     "$SCRIPT_DIR/../yaml/aws-load-balancer-controller.yaml" \
   | kubectl apply --server-side --force-conflicts -n kube-system -f -
 kubectl -n kube-system rollout status deployment/aws-load-balancer-controller --timeout=180s
