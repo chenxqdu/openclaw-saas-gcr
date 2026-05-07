@@ -43,6 +43,7 @@ if [ "$DRY_RUN" != "true" ]; then
   echo -e "${RED}⚠️  This will PERMANENTLY DELETE all workshop resources:${NC}"
   echo "  - Hermes Sandbox + hermes namespace (if deployed via step4)"
   echo "  - Karpenter + sandbox NodePool + agent-sandbox controller/CRDs (if deployed)"
+  echo "  - Tenant namespaces (tenant-*) + OpenClawInstance CRs + their PVCs"
   echo "  - Platform API (deployment, secrets, NLB)"
   echo "  - OpenClaw Operator + CRD"
   echo "  - Helm charts (EFS CSI, ALB Controller)"
@@ -194,6 +195,33 @@ echo "  Step 2: Removing K8s Components"
 echo "============================================"
 
 if [ "$KUBECTL_OK" = "true" ]; then
+  # Tenant CRs + namespaces — MUST drain before removing the operator,
+  # otherwise OpenClawInstance CRs stall forever on finalizers with no
+  # operator to reconcile them (which then blocks CRD deletion).
+  log "[2.0] Draining tenant namespaces (OpenClawInstance CRs + PVCs + ns)..."
+  if [ "$DRY_RUN" != "true" ]; then
+    # Delete all OpenClawInstance CRs cluster-wide
+    TENANT_NS=$(kubectl get ns -o name 2>/dev/null | grep '^namespace/tenant-' | cut -d/ -f2 || true)
+    for ns in $TENANT_NS; do
+      kubectl -n "$ns" delete openclawinstance --all --timeout=120s 2>/dev/null || true
+    done
+    # Give the operator a moment to run finalizers
+    sleep 5
+    # Delete the tenant namespaces (this reclaims PVCs/EBS volumes via
+    # the gp3 StorageClass's Delete reclaim policy)
+    for ns in $TENANT_NS; do
+      kubectl delete namespace "$ns" --ignore-not-found --timeout=180s 2>/dev/null || true
+    done
+  else
+    TENANT_NS=$(kubectl get ns -o name 2>/dev/null | grep '^namespace/tenant-' | cut -d/ -f2 || true)
+    if [ -n "$TENANT_NS" ]; then
+      echo "  (dry-run) would delete OpenClawInstance CRs + namespaces in:"
+      echo "$TENANT_NS" | sed 's/^/    /'
+    else
+      echo "  (dry-run) no tenant-* namespaces to drain"
+    fi
+  fi
+
   # OpenClaw Operator
   log "[2.1] Deleting OpenClaw Operator..."
   if [ "$DRY_RUN" != "true" ]; then
@@ -209,9 +237,21 @@ if [ "$KUBECTL_OK" = "true" ]; then
     echo "  (dry-run) delete operator deployment, RBAC, namespace"
   fi
 
-  # CRDs
+  # CRDs — operator is already gone, so any remaining CR finalizers
+  # must be cleared manually before CRD deletion can succeed.
   log "[2.2] Deleting OpenClaw CRDs..."
   if [ "$DRY_RUN" != "true" ]; then
+    # Force-clear finalizers on any leftover CRs (defense in depth —
+    # [2.0] should have removed all CRs already)
+    for crd in openclawinstances.openclaw.rocks openclawselfconfigs.openclaw.rocks; do
+      kubectl get "$crd" --all-namespaces -o json 2>/dev/null \
+        | jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' 2>/dev/null \
+        | while read -r ns name; do
+            [ -z "$name" ] && continue
+            kubectl -n "$ns" patch "$crd" "$name" --type=merge \
+              -p '{"metadata":{"finalizers":[]}}' 2>/dev/null || true
+          done
+    done
     kubectl delete crd openclawinstances.openclaw.rocks openclawselfconfigs.openclaw.rocks --ignore-not-found --timeout=60s 2>/dev/null || true
   else
     echo "  (dry-run) kubectl delete crd openclawinstances.openclaw.rocks openclawselfconfigs.openclaw.rocks"
