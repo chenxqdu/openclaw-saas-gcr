@@ -8,11 +8,12 @@
 cloudformation/
   cloudlab-template-china.yaml    ← Step 1: CFN 全栈模板 (EKS+RDS+SQS+VPC+IAM+EFS)
 scripts/
-  step2-k8s-components.sh         ← Step 2: K8s 组件部署脚本
-  step3-platform-api.sh           ← Step 3: Platform API 部署脚本
-  step4-hermes-sandbox.sh         ← Step 4 (可选): Hermes Agent Sandbox 部署
-  destroy.sh                      ← 全栈销毁脚本
-  e2e-test.py                     ← Playwright 端到端测试
+  step2-k8s-components.sh             ← Step 2: K8s 组件部署脚本
+  step3-platform-api.sh               ← Step 3: Platform API 部署脚本
+  step4-hermes-sandbox.sh             ← Step 4 默认: 静态 sandbox-nodes managed nodegroup
+  step4-hermes-sandbox-karpenter.sh   ← Step 4 备选: Karpenter 动态扩容 (需要 ec2:CreateLaunchTemplate 权限)
+  destroy.sh                          ← 全栈销毁脚本
+  e2e-test.py                         ← Playwright 端到端测试
 yaml/
   storage-classes.yaml            ← efs-sc + gp3 StorageClass
   aws-load-balancer-controller.yaml ← ALB controller v3.2.1 (rendered from eks-charts)
@@ -93,19 +94,28 @@ bash scripts/step3-platform-api.sh
 6. Platform API Deployment (2 replicas) + NLB Service
 7. 数据库 Migration (usage tables)
 
-### Step 4 (可选): Hermes Agent Sandbox 部署 (~5 分钟，首次需等 Karpenter 起节点)
+### Step 4 (可选): Hermes Agent Sandbox 部署 (~3 分钟)
 
 独立部署一个基于 [Agent Sandbox CRD](https://agent-sandbox.sigs.k8s.io/)
 的 [Hermes Agent](https://github.com/NousResearch/hermes-agent) 实例，
-通过飞书交互。Hermes 运行在独立的 Karpenter 节点池中（不使用 Kata
-Containers），通过外部 LiteLLM 代理访问模型。
+通过飞书交互，经外部 LiteLLM 代理访问模型。
 
-**前置条件：**
+**两个变体**（只跑其中一个）：
+
+| 变体 | 脚本 | 节点来源 | 使用场景 |
+|------|------|----------|----------|
+| **默认**：静态 | `scripts/step4-hermes-sandbox.sh` | CFN Step 1 预置的 `sandbox-nodes` managed nodegroup | 推荐。不依赖 Karpenter，适用于 AWS Organizations SCP 限制 `ec2:CreateLaunchTemplate` 的账号 |
+| 备选：Karpenter | `scripts/step4-hermes-sandbox-karpenter.sh` | Karpenter 动态扩容 | 需要账号允许 Karpenter 用 `ec2:CreateLaunchTemplate` / `ec2:RunInstances` |
+
+两个变体都用**相同的** Hermes Sandbox CRD / ConfigMap / namespace / 飞书秘密配置；
+差异只在"节点来自哪里"。两者共用 `yaml/hermes-*.yaml` 和 `yaml/agent-sandbox-*.yaml`。
+
+**前置条件（两个变体共用）：**
 - Step 1-3 已完成
 - 已有可用的 LiteLLM 代理（URL + Bearer token）
 - 已创建 **独立** 的飞书应用（不能复用 Step 3 的 OpenClaw 飞书 App）
 
-**必填环境变量：**
+**必填环境变量（两个变体共用）：**
 
 | 变量 | 示例 | 用途 |
 |------|------|------|
@@ -120,10 +130,10 @@ Containers），通过外部 LiteLLM 代理访问模型。
 |------|------|------|
 | `HERMES_MODEL` | `zai-org/glm-5` | LiteLLM 中的模型名 |
 | `HERMES_IMAGE` | `${ECR_REGISTRY}/nousresearch/hermes-agent:latest` | Hermes 镜像 |
-| `KARPENTER_VERSION` | `1.9.0` | Karpenter Helm chart 版本 |
 | `AGENT_SANDBOX_VERSION` | `v0.3.10` | agent-sandbox 上游 release tag |
+| `KARPENTER_VERSION`（仅 Karpenter 变体）| `1.9.0` | Karpenter Helm chart 版本 |
 
-**执行：**
+**执行（默认/静态变体）：**
 
 ```bash
 export STACK_NAME=openclaw-cn-workshop
@@ -136,23 +146,28 @@ export FEISHU_APP_SECRET="..."
 bash scripts/step4-hermes-sandbox.sh
 ```
 
-**部署的内容：**
-1. Karpenter Helm chart 到 `kube-system`（IRSA 绑定已由 CFN 创建的
-   `KarpenterControllerRole`）
-2. `sandbox` NodePool + EC2NodeClass（arm64, m6g/m7g on-demand，
-   taint `sandbox=true:NoSchedule`）
-3. Agent Sandbox Controller (`v0.3.10`) 到 `agent-sandbox-system` —
+**默认变体部署的内容：**
+1. 校验 `sandbox-nodes` managed nodegroup 处于 ACTIVE（由 Step 1 CFN 预置，
+   带 `workload-type=sandbox` label 和 `sandbox=true:NoSchedule` taint）
+2. Agent Sandbox Controller (`v0.3.10`) 到 `agent-sandbox-system` —
    controller 镜像从 `${ECR_REGISTRY}/agent-sandbox/agent-sandbox-controller`
-   镜像源拉（原 `registry.k8s.io` 在 CN 不稳）
-4. `hermes` namespace + 两个 Secret（`hermes-litellm-key`、`hermes-feishu`）
-5. `hermes-config` ConfigMap（`config.yaml` 指向 LiteLLM）
-6. `hermes-feishu-sandbox` Sandbox CRD 实例（nodeSelector 和
-   toleration 匹配 sandbox nodepool）
+   拉（原 `registry.k8s.io` 在 CN 不稳）
+3. `hermes` namespace + 两个 Secret（`hermes-litellm-key`、`hermes-feishu`）
+4. `hermes-config` ConfigMap（`config.yaml` 指向 LiteLLM）
+5. `hermes-feishu-sandbox` Sandbox CRD 实例
+
+**Karpenter 变体** 相对默认变体的额外步骤：先 `helm install karpenter`，
+再创建 `sandbox` NodePool + EC2NodeClass。Hermes pod 触发 Karpenter 动态扩容 node。
 
 **验证：**
 
 ```bash
+# 默认变体
+kubectl get nodes -l workload-type=sandbox
+# Karpenter 变体
 kubectl get nodepool sandbox
+
+# 两者共用
 kubectl -n hermes get sandbox,pod
 kubectl -n hermes logs -l sandbox=hermes-feishu-sandbox -f --tail=50
 ```

@@ -2,17 +2,27 @@
 set -euo pipefail
 
 ########################################
-# OpenClaw CN Workshop - Step 4
+# OpenClaw CN Workshop - Step 4 (default: static nodegroup)
 # Hermes Agent Sandbox Deployment
 #
-# Adds a Karpenter-managed "sandbox" nodepool and deploys the Hermes
-# agent (https://github.com/NousResearch/hermes-agent) as a Sandbox
-# CRD instance (https://agent-sandbox.sigs.k8s.io). Hermes talks to
-# an externally-hosted LiteLLM endpoint for model routing.
+# Installs the kubernetes-sigs agent-sandbox controller and deploys
+# the Hermes agent (https://github.com/NousResearch/hermes-agent) as
+# a Sandbox CRD instance. Hermes talks to an externally-hosted
+# LiteLLM endpoint for model routing.
+#
+# Hermes pods land on the dedicated `sandbox-nodes` managed nodegroup
+# provisioned by Step 1 CFN (labels: workload-type=sandbox;
+# taints: sandbox=true:NoSchedule). No Karpenter, no runtime EC2
+# provisioning — works in accounts whose Organizations SCP forbids
+# ec2:CreateLaunchTemplate.
+#
+# If you DO want on-demand scaling via Karpenter, use the variant
+# script scripts/step4-hermes-sandbox-karpenter.sh instead. Only
+# one variant should be active at a time.
 #
 # Runs after Step 1/2/3. Independent of the platform-managed OpenClaw
-# path — Hermes lives in its own namespace with its own Karpenter
-# nodepool and does NOT touch operator/platform-api resources.
+# path — Hermes lives in its own namespace and does NOT touch
+# operator/platform-api resources.
 ########################################
 
 STACK_NAME="${STACK_NAME:-openclaw-cn-workshop}"
@@ -21,18 +31,11 @@ REGION="${REGION:-cn-northwest-1}"
 # Image registry — same convention as step2/step3.
 ECR_REGISTRY="${ECR_REGISTRY:-public.ecr.aws/i4x4j7g8/openclaw-saas}"
 
-# Karpenter + agent-sandbox versions.
-KARPENTER_VERSION="${KARPENTER_VERSION:-1.9.0}"
+# agent-sandbox version (yaml/agent-sandbox-*.yaml are vendored at this version).
 AGENT_SANDBOX_VERSION="${AGENT_SANDBOX_VERSION:-v0.3.10}"
 
 # Hermes agent image (mirrored from docker.io/nousresearch/hermes-agent).
 HERMES_IMAGE="${HERMES_IMAGE:-${ECR_REGISTRY}/nousresearch/hermes-agent:latest}"
-
-# Agent-sandbox controller image — upstream publishes to registry.k8s.io
-# which is unreachable from CN nodes. We ship yaml/agent-sandbox-*.yaml
-# pre-rewritten to `${ECR_REGISTRY}/agent-sandbox/agent-sandbox-controller:<ver>`
-# and sed-substitute on apply (see [4/5] below). Override ECR_REGISTRY
-# above to redirect to a private mirror.
 
 # LiteLLM proxy endpoint (user-hosted). base_url form: https://host[/path]
 LITELLM_BASE_URL="${LITELLM_BASE_URL:?must set LITELLM_BASE_URL, e.g. https://litellm.example.com}"
@@ -50,155 +53,55 @@ YAML_DIR="${SCRIPT_DIR}/../yaml"
 
 echo "============================================"
 echo "  OpenClaw Workshop - Step 4: Hermes Sandbox"
+echo "  (static sandbox-nodes managed nodegroup)"
 echo "  Stack: $STACK_NAME | Region: $REGION"
 echo "  Registry: $ECR_REGISTRY"
-echo "  Karpenter: $KARPENTER_VERSION"
 echo "  Agent Sandbox: $AGENT_SANDBOX_VERSION"
 echo "============================================"
 
-# ---- [1/5] Fetch Step 1 outputs ----
+# ---- [1/4] Fetch Step 1 outputs + verify sandbox nodegroup ----
 echo ""
-echo ">>> [1/5] Fetching Step 1 outputs..."
+echo ">>> [1/4] Fetching Step 1 outputs + verifying sandbox-nodes..."
 get_output() {
   aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" \
     --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text
 }
 
 CLUSTER_NAME=$(get_output ClusterName)
-KARPENTER_CONTROLLER_ROLE_ARN=$(get_output KarpenterControllerRoleArn)
-KARPENTER_NODE_ROLE_ARN=$(get_output KarpenterNodeRoleArn)
-KARPENTER_INTERRUPTION_QUEUE=$(get_output KarpenterInterruptionQueueName)
-
-# Derive node role name from ARN (KarpenterNodeRole is a managed IAM
-# role, not an instance profile; EC2NodeClass.spec.role takes the
-# role name, not the ARN or instance profile name).
-KARPENTER_NODE_ROLE_NAME="${KARPENTER_NODE_ROLE_ARN##*/}"
-
 echo "  Cluster: $CLUSTER_NAME"
-echo "  Karpenter controller role: $KARPENTER_CONTROLLER_ROLE_ARN"
-echo "  Karpenter node role: $KARPENTER_NODE_ROLE_NAME"
-echo "  Interruption queue: $KARPENTER_INTERRUPTION_QUEUE"
 
-# Ensure kubeconfig points at the workshop cluster.
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$REGION" >/dev/null
 
-# EC2NodeClass selects the KarpenterNodeSecurityGroup by its
-# karpenter.sh/discovery tag, which CFN provisions in Step 1.
-# If the tag is missing, the CFN template is out of date —
-# fail fast rather than quietly falling back to a wrong SG.
-KARPENTER_NODE_SG=$(aws ec2 describe-security-groups --region "$REGION" \
-  --filters "Name=tag:karpenter.sh/discovery,Values=${CLUSTER_NAME}" "Name=vpc-id,Values=$(
-    aws eks describe-cluster --name "$CLUSTER_NAME" --region "$REGION" --query 'cluster.resourcesVpcConfig.vpcId' --output text
-  )" \
-  --query 'SecurityGroups[0].GroupId' --output text 2>/dev/null || echo "")
-if [ -z "$KARPENTER_NODE_SG" ] || [ "$KARPENTER_NODE_SG" = "None" ]; then
-  echo "ERROR: no security group with tag karpenter.sh/discovery=${CLUSTER_NAME} found."
-  echo "       CFN stack ${STACK_NAME} must declare KarpenterNodeSecurityGroup."
-  echo "       Run 'aws cloudformation update-stack' with the latest template and retry."
+# Confirm the sandbox-nodes managed nodegroup is ACTIVE before
+# deploying workloads that require it; fail fast with a clear hint
+# if the CFN template is out of date.
+SANDBOX_NG_STATUS=$(aws eks describe-nodegroup \
+  --cluster-name "$CLUSTER_NAME" \
+  --nodegroup-name sandbox-nodes \
+  --region "$REGION" \
+  --query 'nodegroup.status' --output text 2>/dev/null || echo "MISSING")
+if [ "$SANDBOX_NG_STATUS" != "ACTIVE" ]; then
+  echo "ERROR: sandbox-nodes managed nodegroup status=$SANDBOX_NG_STATUS."
+  echo "       Expected ACTIVE. Run 'aws cloudformation update-stack' with"
+  echo "       the latest template — it provisions 'sandbox-nodes' with the"
+  echo "       required workload-type=sandbox label + sandbox=true NoSchedule taint."
   exit 1
 fi
-echo "  Karpenter node SG (discovery target): $KARPENTER_NODE_SG"
+echo "  sandbox-nodes: ACTIVE"
 
-# ---- [2/5] Install Karpenter (Helm, OCI chart) ----
+# ---- [2/4] Install Agent Sandbox controller ----
 echo ""
-echo ">>> [2/5] Installing Karpenter ${KARPENTER_VERSION}..."
-helm upgrade --install karpenter \
-  "oci://public.ecr.aws/karpenter/karpenter" \
-  --version "$KARPENTER_VERSION" \
-  --namespace kube-system \
-  --set "settings.clusterName=$CLUSTER_NAME" \
-  --set "settings.interruptionQueue=$KARPENTER_INTERRUPTION_QUEUE" \
-  --set "serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$KARPENTER_CONTROLLER_ROLE_ARN" \
-  --set controller.resources.requests.cpu=200m \
-  --set controller.resources.requests.memory=256Mi \
-  --set controller.resources.limits.cpu=1 \
-  --set controller.resources.limits.memory=1Gi \
-  --wait --timeout 5m
-
-# ---- [3/5] Sandbox NodePool + EC2NodeClass ----
-echo ""
-echo ">>> [3/5] Creating sandbox NodePool + EC2NodeClass..."
-cat <<NODEPOOL_EOF | kubectl apply --server-side --force-conflicts -f -
----
-apiVersion: karpenter.k8s.aws/v1
-kind: EC2NodeClass
-metadata:
-  name: sandbox
-spec:
-  amiFamily: AL2023
-  role: ${KARPENTER_NODE_ROLE_NAME}
-  subnetSelectorTerms:
-    - tags:
-        karpenter.sh/discovery: ${CLUSTER_NAME}
-  securityGroupSelectorTerms:
-    - tags:
-        karpenter.sh/discovery: ${CLUSTER_NAME}
-  amiSelectorTerms:
-    - alias: al2023@latest
-  tags:
-    openclaw-workshop/nodepool: sandbox
-    karpenter.sh/discovery: ${CLUSTER_NAME}
----
-apiVersion: karpenter.sh/v1
-kind: NodePool
-metadata:
-  name: sandbox
-spec:
-  template:
-    metadata:
-      labels:
-        workload-type: sandbox
-    spec:
-      nodeClassRef:
-        group: karpenter.k8s.aws
-        kind: EC2NodeClass
-        name: sandbox
-      taints:
-        - key: sandbox
-          value: "true"
-          effect: NoSchedule
-      requirements:
-        - key: kubernetes.io/arch
-          operator: In
-          values: ["arm64"]
-        - key: kubernetes.io/os
-          operator: In
-          values: ["linux"]
-        - key: node.kubernetes.io/instance-type
-          operator: In
-          values: ["m6g.large", "m6g.xlarge", "m7g.large", "m7g.xlarge"]
-        - key: karpenter.sh/capacity-type
-          operator: In
-          values: ["on-demand"]
-      expireAfter: 168h
-  disruption:
-    consolidationPolicy: WhenEmpty
-    consolidateAfter: 1m
-  limits:
-    cpu: "16"
-    memory: 64Gi
-NODEPOOL_EOF
-
-# ---- [4/5] Install Agent Sandbox controller ----
-echo ""
-echo ">>> [4/5] Installing Agent Sandbox ${AGENT_SANDBOX_VERSION}..."
+echo ">>> [2/4] Installing Agent Sandbox ${AGENT_SANDBOX_VERSION}..."
 # Both manifests carry the controller image as a ${ECR_REGISTRY}
 # placeholder (see yaml/agent-sandbox-*.yaml). Upstream ships both —
 # extensions.yaml re-declares the same Deployment so we must apply the
 # same registry substitution to both, otherwise the second apply
 # clobbers the first with the upstream registry.k8s.io reference.
-# To refresh these files from upstream:
-#   curl -fsSL https://github.com/kubernetes-sigs/agent-sandbox/releases/download/<ver>/manifest.yaml \
-#     | sed 's|registry.k8s.io/agent-sandbox/agent-sandbox-controller:<ver>|${ECR_REGISTRY}/agent-sandbox/agent-sandbox-controller:<ver>|g' \
-#     > yaml/agent-sandbox-manifest.yaml
-# (same for extensions.yaml)
 for f in "${YAML_DIR}/agent-sandbox-manifest.yaml" "${YAML_DIR}/agent-sandbox-extensions.yaml"; do
   sed "s|\${ECR_REGISTRY}|${ECR_REGISTRY}|g" "$f" \
     | kubectl apply --server-side --force-conflicts --timeout=120s -f -
 done
 
-# Wait for the controller deployment (name may vary between releases — just wait
-# for any deployment in the agent-sandbox-system namespace to roll out).
 echo "  Waiting for agent-sandbox-system deployments..."
 for d in $(kubectl -n agent-sandbox-system get deploy -o name 2>/dev/null); do
   kubectl -n agent-sandbox-system rollout status "$d" --timeout=180s
@@ -209,12 +112,11 @@ kubectl get crd | grep agents.x-k8s.io || {
   exit 1
 }
 
-# ---- [5/5] Deploy Hermes Sandbox ----
+# ---- [3/4] Namespace + secrets ----
 echo ""
-echo ">>> [5/5] Deploying Hermes Sandbox..."
+echo ">>> [3/4] Creating hermes namespace + secrets..."
 kubectl create namespace hermes --dry-run=client -o yaml | kubectl apply -f -
 
-# Secrets — credentials never land in YAML.
 kubectl -n hermes create secret generic hermes-litellm-key \
   --from-literal=api-key="$LITELLM_API_KEY" \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -224,9 +126,9 @@ kubectl -n hermes create secret generic hermes-feishu \
   --from-literal=app-secret="$FEISHU_APP_SECRET" \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# ConfigMap + Sandbox CRD: ${VAR} placeholders substituted by sed
-# (matches the style used by step2/step3 against yaml/*.yaml — no
-# envsubst/gettext dependency needed).
+# ---- [4/4] Deploy Hermes Sandbox ----
+echo ""
+echo ">>> [4/4] Deploying Hermes Sandbox..."
 sed -e "s|\${HERMES_MODEL}|${HERMES_MODEL}|g" \
     -e "s|\${LITELLM_BASE_URL}|${LITELLM_BASE_URL}|g" \
     "${YAML_DIR}/hermes-config.yaml" | kubectl apply -f -
@@ -239,17 +141,14 @@ echo "============================================"
 echo "  Step 4 Complete!"
 echo "============================================"
 echo ""
-echo ">>> Karpenter + agent-sandbox controllers:"
-kubectl -n kube-system get pods -l app.kubernetes.io/name=karpenter 2>/dev/null | head -5
+echo ">>> agent-sandbox controller:"
 kubectl -n agent-sandbox-system get pods 2>/dev/null | head -5
 echo ""
 echo ">>> Hermes Sandbox status:"
 kubectl -n hermes get sandbox,pod 2>&1 | head -10
 echo ""
-echo ">>> Follow pod startup (Ctrl-C to stop watching):"
+echo ">>> Follow pod startup:"
 echo "  kubectl -n hermes get pod -l sandbox=hermes-feishu-sandbox -w"
 echo ""
-echo ">>> Tail logs once running:"
+echo ">>> Tail logs once running (expect: [Lark] connected to wss://msg-frontier.feishu.cn):"
 echo "  kubectl -n hermes logs -l sandbox=hermes-feishu-sandbox -f --tail=50"
-echo ""
-echo ">>> First pod start may take 3-5 minutes (Karpenter provisioning new EC2 node)."

@@ -77,12 +77,17 @@ echo "  Step 4: Removing Hermes Sandbox + Karpenter"
 echo "============================================"
 
 if [ "$KUBECTL_OK" = "true" ]; then
-  # Skip silently if Hermes resources were never deployed.
-  if kubectl get ns hermes &>/dev/null \
-      || kubectl get crd sandboxes.agents.x-k8s.io &>/dev/null \
-      || kubectl get nodepool sandbox &>/dev/null 2>&1 \
-      || helm -n kube-system status karpenter &>/dev/null; then
+  # Each step is idempotent / --ignore-not-found, so it's safe to run
+  # unconditionally — covers both variants (Karpenter and static
+  # sandbox-nodes). The static sandbox managed nodegroup itself is
+  # torn down as part of CFN stack deletion (Step 1 reference below);
+  # destroy.sh does NOT delete it.
+  has_hermes_resources=false
+  kubectl get ns hermes &>/dev/null && has_hermes_resources=true
+  kubectl get crd sandboxes.agents.x-k8s.io &>/dev/null && has_hermes_resources=true
+  { kubectl get nodepool sandbox &>/dev/null || helm -n kube-system status karpenter &>/dev/null; } && has_hermes_resources=true
 
+  if [ "$has_hermes_resources" = "true" ]; then
     log "[4.1] Deleting Hermes Sandbox + namespace..."
     if [ "$DRY_RUN" != "true" ]; then
       kubectl delete sandbox hermes-feishu-sandbox -n hermes --ignore-not-found --timeout=60s 2>/dev/null || true
@@ -91,14 +96,17 @@ if [ "$KUBECTL_OK" = "true" ]; then
       echo "  (dry-run) kubectl delete sandbox + namespace hermes"
     fi
 
-    log "[4.2] Deleting sandbox NodePool + EC2NodeClass (drains Karpenter nodes)..."
+    log "[4.2] Deleting Karpenter NodePool + EC2NodeClass (Karpenter variant only)..."
     if [ "$DRY_RUN" != "true" ]; then
       kubectl delete nodepool sandbox --ignore-not-found --timeout=120s 2>/dev/null || true
       kubectl delete ec2nodeclass sandbox --ignore-not-found --timeout=60s 2>/dev/null || true
-      # Give Karpenter ~30s to terminate provisioned nodes before we uninstall it.
-      sleep 30
+      # Give Karpenter time to terminate any provisioned nodes before
+      # we uninstall the controller itself.
+      if kubectl -n kube-system get deploy karpenter &>/dev/null; then
+        sleep 30
+      fi
     else
-      echo "  (dry-run) kubectl delete nodepool/ec2nodeclass sandbox"
+      echo "  (dry-run) kubectl delete nodepool/ec2nodeclass sandbox (no-op for static variant)"
     fi
 
     log "[4.3] Uninstalling agent-sandbox controller + CRDs..."
@@ -117,14 +125,14 @@ if [ "$KUBECTL_OK" = "true" ]; then
       echo "  (dry-run) kubectl delete -f yaml/agent-sandbox-{manifest,extensions}.yaml"
     fi
 
-    log "[4.4] Uninstalling Karpenter..."
+    log "[4.4] Uninstalling Karpenter (Karpenter variant only)..."
     if [ "$DRY_RUN" != "true" ]; then
       helm uninstall karpenter -n kube-system --wait --timeout 120s 2>/dev/null || true
     else
-      echo "  (dry-run) helm uninstall karpenter"
+      echo "  (dry-run) helm uninstall karpenter (no-op for static variant)"
     fi
   else
-    echo "  Hermes/Karpenter not deployed — skipping Step 4 cleanup"
+    echo "  Hermes / agent-sandbox / Karpenter not deployed — skipping Step 4 cleanup"
   fi
 else
   warn "kubectl not available, skipping Step 4 resource cleanup"

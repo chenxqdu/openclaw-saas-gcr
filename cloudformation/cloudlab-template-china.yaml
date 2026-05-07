@@ -62,6 +62,32 @@ Parameters:
     MaxValue: 20
     Description: Maximum number of system nodes
 
+  SandboxNodeInstanceTypes:
+    Type: String
+    Default: m6g.xlarge
+    Description: Instance type for the sandbox managed node group (Step 4 Hermes agent)
+
+  SandboxNodeDesiredCapacity:
+    Type: Number
+    Default: 1
+    MinValue: 0
+    MaxValue: 10
+    Description: Desired number of sandbox nodes (set 0 to disable; Hermes pods will stay Pending until scaled)
+
+  SandboxNodeMinSize:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 10
+    Description: Minimum number of sandbox nodes
+
+  SandboxNodeMaxSize:
+    Type: Number
+    Default: 3
+    MinValue: 1
+    MaxValue: 20
+    Description: Maximum number of sandbox nodes
+
   NodeVolumeSize:
     Type: Number
     Default: 100
@@ -738,6 +764,44 @@ Resources:
         node-class: system
       Tags:
         Name: !Sub '${ClusterName}-standard-node'
+
+  # Dedicated sandbox node group for Step 4 Hermes agent (and future
+  # agent-sandbox workloads). Matches the Sandbox CRD pod spec's
+  #   nodeSelector: workload-type=sandbox
+  #   tolerations:  key=sandbox value=true effect=NoSchedule
+  # Kept separate from standard-nodes so sandbox isolation stays clean
+  # and the workshop does not need Karpenter (some AWS Organizations
+  # SCPs forbid ec2:CreateLaunchTemplate which Karpenter requires).
+  SandboxNodeGroup:
+    Type: AWS::EKS::Nodegroup
+    DependsOn: EKSCluster
+    Properties:
+      ClusterName: !Ref ClusterName
+      NodegroupName: sandbox-nodes
+      NodeRole: !GetAtt NodeGroupRole.Arn
+      Subnets:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+        - !Ref PrivateSubnet3
+      InstanceTypes:
+        - !Ref SandboxNodeInstanceTypes
+      AmiType: !Ref NodeAmiType
+      ScalingConfig:
+        DesiredSize: !Ref SandboxNodeDesiredCapacity
+        MinSize: !Ref SandboxNodeMinSize
+        MaxSize: !Ref SandboxNodeMaxSize
+      LaunchTemplate:
+        Id: !Ref NodeLaunchTemplate
+        Version: !GetAtt NodeLaunchTemplate.LatestVersionNumber
+      Labels:
+        workload-type: sandbox
+        node-class: sandbox
+      Taints:
+        - Key: sandbox
+          Value: "true"
+          Effect: NO_SCHEDULE
+      Tags:
+        Name: !Sub '${ClusterName}-sandbox-node'
 
   # ===========================================================================
   # 3.5 EKS Access Entries (for API_AND_CONFIG_MAP mode)
