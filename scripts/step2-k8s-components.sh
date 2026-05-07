@@ -73,12 +73,38 @@ aws eks describe-addon --cluster-name "$CLUSTER_NAME" --addon-name aws-efs-csi-d
 # 2. ALB Controller (pre-rendered yaml — matches operator / platform yaml style)
 echo ""
 echo ">>> [2/5] Installing ALB Controller (yaml/aws-load-balancer-controller.yaml)..."
+# The yaml bundles the IngressClassParams CRD AND an IngressClassParams
+# object in the same file. kubectl caches API discovery per invocation,
+# so a single apply registers the CRD server-side but still rejects
+# the object locally with "no matches for kind IngressClassParams" —
+# the client does not requery discovery mid-apply. Two passes with a
+# CRD-established wait in between fixes it deterministically.
+RENDERED_ALB="$(mktemp)"
+trap 'rm -f "$RENDERED_ALB"' EXIT
 sed -e "s|\${CLUSTER_NAME}|$CLUSTER_NAME|g" \
     -e "s|\${ALB_CONTROLLER_ROLE_ARN}|$ALB_CONTROLLER_ROLE_ARN|g" \
     -e "s|\${REGION}|$REGION|g" \
     -e "s|\${VPC_ID}|$VPC_ID|g" \
     "$SCRIPT_DIR/../yaml/aws-load-balancer-controller.yaml" \
-  | kubectl apply --server-side --force-conflicts -n kube-system -f -
+  > "$RENDERED_ALB"
+
+# Pass 1: everything except IngressClassParams applies. The one
+# expected failure line is filtered out so `set -e` does not abort.
+echo "  Pass 1/2 (CRDs register; IngressClassParams object is expected to miss on first pass)..."
+{ kubectl apply --server-side --force-conflicts -f "$RENDERED_ALB" 2>&1 \
+    | grep -vE 'no matches for kind "IngressClassParams"' \
+    || true; } | tee /dev/stderr > /dev/null
+
+# Wait for the ALB CRDs to become Established before re-applying.
+for crd in ingressclassparams.elbv2.k8s.aws targetgroupbindings.elbv2.k8s.aws; do
+  kubectl wait --for=condition=established --timeout=60s "crd/${crd}"
+done
+
+# Pass 2: fresh kubectl invocation requeries discovery; the
+# IngressClassParams object now lands. Everything else is a no-op.
+echo "  Pass 2/2..."
+kubectl apply --server-side --force-conflicts -f "$RENDERED_ALB"
+
 kubectl -n kube-system rollout status deployment/aws-load-balancer-controller --timeout=180s
 
 # 3. StorageClasses
