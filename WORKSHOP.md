@@ -115,7 +115,7 @@ Containers），通过外部 LiteLLM 代理访问模型。
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
-| `HERMES_MODEL` | `claude-sonnet-4-5` | LiteLLM 中的模型名 |
+| `HERMES_MODEL` | `zai-org/glm-5` | LiteLLM 中的模型名 |
 | `HERMES_IMAGE` | `${ECR_REGISTRY}/nousresearch/hermes-agent:latest` | Hermes 镜像 |
 | `KARPENTER_VERSION` | `1.9.0` | Karpenter Helm chart 版本 |
 | `AGENT_SANDBOX_VERSION` | `v0.3.10` | agent-sandbox 上游 release tag |

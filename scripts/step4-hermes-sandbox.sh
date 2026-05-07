@@ -37,7 +37,7 @@ HERMES_IMAGE="${HERMES_IMAGE:-${ECR_REGISTRY}/nousresearch/hermes-agent:latest}"
 # LiteLLM proxy endpoint (user-hosted). base_url form: https://host[/path]
 LITELLM_BASE_URL="${LITELLM_BASE_URL:?must set LITELLM_BASE_URL, e.g. https://litellm.example.com}"
 LITELLM_API_KEY="${LITELLM_API_KEY:?must set LITELLM_API_KEY (Bearer token)}"
-HERMES_MODEL="${HERMES_MODEL:-claude-sonnet-4-5}"
+HERMES_MODEL="${HERMES_MODEL:-zai-org/glm-5}"
 
 # Feishu credentials — bot must be a separate Feishu app from the
 # OpenClaw feishu bot used in Step 3 (a Feishu bot can't be shared
