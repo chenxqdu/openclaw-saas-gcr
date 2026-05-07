@@ -23,7 +23,7 @@ kubectl create secret generic platform-api-config \
   --from-literal=DEFAULT_AGENT_IMAGE="" \
   --from-literal=DEFAULT_AGENT_IMAGE_TAG="latest" \
   --from-literal=METRICS_EXPORTER_REPO="openclaw-saas-metrics-exporter" \
-  --from-literal=METRICS_EXPORTER_TAG="v0.3.1" \
+  --from-literal=METRICS_EXPORTER_TAG="v0.3.3" \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 

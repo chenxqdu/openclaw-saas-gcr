@@ -379,7 +379,7 @@ cd ..
 | `AWS_PARTITION` | ✅ | `aws-cn` |
 | `AWS_ACCOUNT_ID` | ✅ | AWS 账号 ID |
 | `METRICS_EXPORTER_REPO` | ✅ | `openclaw-saas-metrics-exporter` |
-| `METRICS_EXPORTER_TAG` | ✅ | `v0.3.1` |
+| `METRICS_EXPORTER_TAG` | ✅ | `v0.3.3` |
 | `DEFAULT_AGENT_IMAGE` | | CN custom image |
 | `OPERATOR_IMAGE_REPO` | | ECR 中 operator 镜像路径 |
 | `ALB_CONTROLLER_IMAGE` | | ECR 中 ALB controller 镜像路径 |
