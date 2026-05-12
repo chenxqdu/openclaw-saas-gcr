@@ -91,8 +91,12 @@ async def create_agent(
             llm_model=model,
             llm_api_keys=agent_data.llm_api_keys,
             enable_chromium=agent_data.enable_chromium,
+            enable_gateway=agent_data.enable_gateway,
             custom_image=agent_data.custom_image,
             custom_image_tag=agent_data.custom_image_tag,
+            runtime_class_name=agent_data.runtime_class_name,
+            node_selector=agent_data.node_selector,
+            tolerations=agent_data.tolerations,
         )
         agent.status = AgentStatus.RUNNING.value
         await db.commit()
@@ -143,6 +147,8 @@ async def get_agent_status(
         crd_phase = instance.get("status", {}).get("phase", "Unknown") if instance else "NotFound"
         crd_ready = instance.get("status", {}).get("ready", False) if instance else False
 
+        gw = await k8s_client.get_agent_gateway_info(tenant_name, agent.name)
+
         return {
             "agent_id": agent.id,
             "agent_name": agent.name,
@@ -151,6 +157,8 @@ async def get_agent_status(
             "crd_ready": crd_ready,
             "channels": agent.channels,
             "pod": pod_status,
+            "gateway_enabled": gw["gateway_enabled"],
+            "gateway_url": gw["gateway_url"],
         }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to get status: {str(e)}")

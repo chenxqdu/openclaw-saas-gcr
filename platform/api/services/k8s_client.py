@@ -208,8 +208,12 @@ class K8sClient:
         llm_api_keys: Optional[Dict[str, str]] = None,
         channel_config: Optional[Dict] = None,
         enable_chromium: bool = False,
+        enable_gateway: bool = False,
         custom_image: Optional[str] = None,
         custom_image_tag: Optional[str] = None,
+        runtime_class_name: Optional[str] = None,
+        node_selector: Optional[Dict[str, str]] = None,
+        tolerations: Optional[list] = None,
     ) -> dict:
         """Create OpenClawInstance CRD + agent-keys secret."""
         from api.models.agent import LLM_PROVIDERS
@@ -240,21 +244,13 @@ class K8sClient:
             non_secret_keys = {"CUSTOM_BASE_URL", "CUSTOM_MODEL_ID", "AWS_DEFAULT_REGION"}
             secret_data = {k: v for k, v in llm_api_keys.items() if k not in non_secret_keys}
 
-        # bedrock-irsa: obtain temporary credentials from instance metadata / node role
+        # bedrock-irsa: use IRSA (ServiceAccount annotation) for pod-level Bedrock access.
+        # The SA annotation is added to the CRD body below; no temporary credentials needed.
         if llm_provider == "bedrock-irsa":
-            import boto3
-            try:
-                session = boto3.Session()
-                credentials = session.get_credentials().get_frozen_credentials()
-                secret_data["AWS_ACCESS_KEY_ID"] = credentials.access_key
-                secret_data["AWS_SECRET_ACCESS_KEY"] = credentials.secret_key
-                if credentials.token:
-                    secret_data["AWS_SESSION_TOKEN"] = credentials.token
-                secret_data["AWS_DEFAULT_REGION"] = settings.AWS_REGION
-                logger.info(f"bedrock-irsa: injected temporary AWS credentials for {agent_name}")
-            except Exception as e:
-                logger.error(f"bedrock-irsa: failed to obtain AWS credentials: {e}")
-                raise ValueError(f"Failed to obtain AWS credentials for bedrock-irsa: {e}")
+            if not settings.BEDROCK_ROLE_ARN:
+                raise ValueError("BEDROCK_ROLE_ARN not configured. Set it in platform environment.")
+            secret_data["AWS_DEFAULT_REGION"] = settings.AWS_REGION
+            logger.info(f"bedrock-irsa: will use IRSA role {settings.BEDROCK_ROLE_ARN} for {agent_name}")
 
         await self.create_secret(tenant_name, f"{agent_name}-keys", secret_data)
 
@@ -386,6 +382,10 @@ class K8sClient:
             "auth": {
                 "mode": "none",
             },
+            "controlUi": {
+                "allowedOrigins": ["*"],
+                "dangerouslyAllowHostHeaderOriginFallback": True,
+            },
         }
 
         # 3) Build CRD body
@@ -431,11 +431,42 @@ class K8sClient:
                     "containerSecurityContext": {
                         "readOnlyRootFilesystem": False,
                     },
+                    # IRSA: annotate managed SA so pods get Bedrock credentials
+                    **({
+                        "rbac": {
+                            "serviceAccountAnnotations": {
+                                "eks.amazonaws.com/role-arn": settings.BEDROCK_ROLE_ARN,
+                            },
+                        },
+                    } if llm_provider in ("bedrock", "bedrock-irsa") and settings.BEDROCK_ROLE_ARN else {}),
                 },
                 "resources": {
                     "requests": {"cpu": "500m", "memory": "2Gi"},
                     "limits": {"cpu": "2", "memory": "4Gi"},
                 },
+                **({"availability": {
+                    **({"runtimeClassName": runtime_class_name} if runtime_class_name else {}),
+                    **({"nodeSelector": node_selector} if node_selector else {}),
+                    **({"tolerations": tolerations} if tolerations else {}),
+                }} if any([runtime_class_name, node_selector, tolerations]) else {}),
+                **({"networking": {
+                    "ingress": {
+                        "enabled": True,
+                        "className": "alb",
+                        "annotations": {
+                            "alb.ingress.kubernetes.io/scheme": "internet-facing",
+                            "alb.ingress.kubernetes.io/target-type": "ip",
+                            "alb.ingress.kubernetes.io/healthcheck-path": "/healthz",
+                            "alb.ingress.kubernetes.io/healthcheck-protocol": "HTTP",
+                        },
+                        "hosts": [{"host": "", "paths": [{"path": "/", "pathType": "Prefix"}]}],
+                        "security": {
+                            "forceHTTPS": False,
+                            "enableHSTS": False,
+                            "rateLimiting": {"enabled": False},
+                        },
+                    },
+                }} if enable_gateway else {}),
                 # Metrics exporter sidecar - reads JSONL from shared PVC
                 "sidecars": [
                     {
@@ -475,6 +506,7 @@ class K8sClient:
                 plural=self.CRD_PLURAL,
                 body=body,
             )
+
             return {"status": "created", "name": agent_name}
         except client.exceptions.ApiException as e:
             if e.status == 409:
@@ -535,6 +567,32 @@ class K8sClient:
         # Also delete the keys secret
         await self.delete_secret(tenant_name, f"{agent_name}-keys")
         return {"status": "deleted", "name": agent_name}
+
+    async def get_agent_gateway_info(self, tenant_name: str, agent_name: str) -> dict:
+        """Get gateway status: check if ingress exists and read its ALB hostname."""
+        await self.initialize()
+        namespace = f"tenant-{tenant_name}"
+        try:
+            ing = await self._networking_v1.read_namespaced_ingress(
+                name=agent_name, namespace=namespace,
+            )
+        except client.exceptions.ApiException:
+            return {"gateway_enabled": False, "gateway_url": None}
+
+        # Ingress exists — gateway is enabled. Read hostname from status.
+        hostname = None
+        try:
+            for lb in ing.status.load_balancer.ingress:
+                hostname = lb.hostname or lb.ip
+                if hostname:
+                    break
+        except (AttributeError, TypeError):
+            pass
+
+        return {
+            "gateway_enabled": True,
+            "gateway_url": f"http://{hostname}" if hostname else None,
+        }
 
     # ─── Pod Status ───
 

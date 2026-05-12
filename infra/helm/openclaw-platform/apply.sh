@@ -140,6 +140,18 @@ if [[ -z "${ADMIN_PASSWORD}" ]]; then
 fi
 [[ -n "$ADMIN_PASSWORD" ]] || err "ADMIN_PASSWORD is required"
 
+# ── 2b. Discover Bedrock IRSA role (created by Terraform) ──────────────────
+BEDROCK_ROLE_ARN="${BEDROCK_ROLE_ARN:-}"
+if [[ -z "$BEDROCK_ROLE_ARN" ]]; then
+  BEDROCK_ROLE_ARN=$(aws iam list-roles --query "Roles[?contains(RoleName,'bedrock')].Arn | [0]" --output text 2>/dev/null || echo "")
+  [[ "$BEDROCK_ROLE_ARN" == "None" ]] && BEDROCK_ROLE_ARN=""
+fi
+if [[ -n "$BEDROCK_ROLE_ARN" ]]; then
+  log "Bedrock IRSA role: $BEDROCK_ROLE_ARN"
+else
+  warn "No Bedrock IAM role found. Bedrock-IRSA provider will not work."
+fi
+
 log "Helm install/upgrade $HELM_RELEASE → $HELM_NAMESPACE..."
 # create-namespace first so Pod Identity Association can reference it
 kubectl create namespace "$HELM_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f - >/dev/null
@@ -150,7 +162,8 @@ helm upgrade --install "$HELM_RELEASE" "$SCRIPT_DIR" \
   --set config.awsAccountId="$AWS_ACCOUNT_ID" \
   --set config.adminEmail="$ADMIN_EMAIL" \
   --set config.adminPassword="$ADMIN_PASSWORD" \
-  --set config.awsPartition="$AWS_PARTITION"
+  --set config.awsPartition="$AWS_PARTITION" \
+  --set config.bedrockRoleArn="$BEDROCK_ROLE_ARN"
 
 # Pod Identity webhook needs a few seconds to sync the new association.
 # Delete pods (not rollout restart) to force re-admission through the webhook.

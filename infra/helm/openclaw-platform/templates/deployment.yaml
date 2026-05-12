@@ -18,7 +18,7 @@ spec:
       serviceAccountName: {{ include "openclaw-platform.serviceAccountName" . }}
       containers:
         - name: api
-          image: {{ .Values.image.platform }}:{{ .Values.image.platformTag }}
+          image: {{ .Values.image.registry }}/{{ .Values.image.platform.repository }}:{{ .Values.image.platform.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: 8000
@@ -46,7 +46,7 @@ spec:
           {{- end }}
         {{- if .Values.billing.enabled }}
         - name: billing-consumer
-          image: {{ .Values.image.billingConsumer }}:{{ .Values.image.billingConsumerTag }}
+          image: {{ .Values.image.registry }}/{{ .Values.image.billingConsumer.repository }}:{{ .Values.image.billingConsumer.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           env:
             - name: PYTHONUNBUFFERED

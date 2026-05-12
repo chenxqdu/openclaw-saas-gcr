@@ -59,11 +59,13 @@ async def get_tenant_dashboard(
     }
 
     # --- Agents with status ---
+    from api.services.k8s_client import k8s_client
     agent_result = await db.execute(
         select(Agent).where(Agent.tenant_id == tenant.id)
     )
     agents_list = []
     for a in agent_result.scalars().all():
+        gw = await k8s_client.get_agent_gateway_info(tenant_name, a.name)
         agents_list.append({
             "id": a.id,
             "name": a.name,
@@ -72,6 +74,8 @@ async def get_tenant_dashboard(
             "status": a.status,
             "channels": a.channels or [],
             "created_at": a.created_at.isoformat() if a.created_at else None,
+            "gateway_enabled": gw["gateway_enabled"],
+            "gateway_url": gw["gateway_url"],
         })
 
     # --- Members ---
@@ -107,13 +111,14 @@ async def get_tenant_dashboard(
     plan_limits = PLAN_LIMITS.get(tenant.plan, PLAN_LIMITS["free"])
 
     # Token usage this month
+    month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     usage_result = await db.execute(text("""
         SELECT COALESCE(SUM(total_tokens), 0) as total_tokens,
                COALESCE(SUM(call_count), 0) as total_calls,
                COALESCE(SUM(estimated_cost), 0) as total_cost
         FROM daily_usage
-        WHERE tenant = :tenant AND date >= date_trunc('month', CURRENT_DATE)
-    """), {"tenant": tenant_name})
+        WHERE tenant = :tenant AND date >= :month_start
+    """), {"tenant": tenant_name, "month_start": month_start})
     usage_row = usage_result.first()
 
     billing_info = {

@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     SQS_QUEUE_URL: str = os.getenv("SQS_QUEUE_URL", "")
     ECR_REGISTRY: str = os.getenv("ECR_REGISTRY", "")
 
+    # Bedrock IRSA role ARN — injected into tenant SA annotation for pod-level Bedrock access
+    BEDROCK_ROLE_ARN: str = os.getenv("BEDROCK_ROLE_ARN", "")
+
     METRICS_EXPORTER_REPO: str = os.getenv("METRICS_EXPORTER_REPO", "openclaw-saas-metrics-exporter")
     METRICS_EXPORTER_TAG: str = os.getenv("METRICS_EXPORTER_TAG", "v0.3.2")
 

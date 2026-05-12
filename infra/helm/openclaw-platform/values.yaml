@@ -1,13 +1,17 @@
 # OpenClaw Platform Helm Chart Values
 
 image:
-  platform: public.ecr.aws/bingjiao/openclaw-saas-platform
-  platformTag: "v0.9.55"
-  billingConsumer: public.ecr.aws/bingjiao/openclaw-saas-billing-consumer
-  billingConsumerTag: "v0.1.0"
-  metricsExporter: public.ecr.aws/bingjiao/openclaw-saas-metrics-exporter
-  metricsExporterTag: "v0.3.0"
+  registry: "public.ecr.aws/bingjiao"
   pullPolicy: Always
+  platform:
+    repository: openclaw-saas-platform
+    tag: "v0.9.63"
+  billingConsumer:
+    repository: openclaw-saas-billing-consumer
+    tag: "v0.1.0"
+  metricsExporter:
+    repository: openclaw-saas-metrics-exporter
+    tag: "v0.3.0"
 
 # Database mode: sqlite or postgres
 db:
@@ -43,11 +47,11 @@ config:
   availableChannels: ""
   defaultAgentImage: ""
   defaultAgentImageTag: latest
-  ecrRegistry: "public.ecr.aws/bingjiao"
   sqsQueueUrl: ""
   awsRegion: ""         # auto-detected from node if empty
   awsPartition: aws
   awsAccountId: ""
+  bedrockRoleArn: ""    # IRSA role ARN for tenant Bedrock access
 
 resources:
   api:
